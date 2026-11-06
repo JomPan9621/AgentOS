@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentOS Task Node",
+  "description": "PLAN 任务表的一行，对应一个可调度节点",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "kind",
+    "deps",
+    "touches",
+    "resource",
+    "worktree",
+    "accept"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^T[0-9]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "write",
+        "read"
+      ]
+    },
+    "deps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "touches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "路径前缀；写型必填"
+    },
+    "resource": {
+      "type": "string",
+      "description": "独占资源标识，none 表示无"
+    },
+    "worktree": {
+      "type": "string",
+      "description": "写型必填；读型填 -"
+    },
+    "accept": {
+      "type": "string",
+      "description": "验收命令或标准"
+    }
+  },
+  "if": {
+    "properties": {
+      "kind": {
+        "const": "write"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "worktree": {
+        "type": "string",
+        "not": {
+          "const": "-"
+        }
+      },
+      "touches": {
+        "minItems": 1
+      }
+    }
+  }
+}

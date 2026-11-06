@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentOS Host Registry",
+  "description": "远端机器登记册（数据层，永不入 git）",
+  "type": "object",
+  "required": [
+    "meta",
+    "hosts"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "properties": {
+        "updated": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "hosts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "hostname",
+          "user"
+        ],
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "description": "SSH 目标（别名或 IP）"
+          },
+          "user": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "policy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auth": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

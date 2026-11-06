@@ -1,0 +1,11 @@
+# 本地状态与生成物
+.agentos/state/
+.agentos/plans/*.state.json
+*.log
+
+# PowerShell 备份
+*.ps1.bak
+
+# 编辑器
+.vscode/
+.idea/

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentOS Resource Lease",
+  "description": "单机单任务独占租约（生成物，永不入 git）",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "host",
+    "task",
+    "acquired_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "host": {
+      "type": "string",
+      "description": "机器别名"
+    },
+    "task": {
+      "type": "string",
+      "description": "占用者任务标识"
+    },
+    "note": {
+      "type": "string"
+    },
+    "acquired_at": {
+      "type": "string",
+      "description": "ISO8601 UTC"
+    }
+  }
+}
