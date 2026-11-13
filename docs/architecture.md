@@ -55,6 +55,8 @@
 
 **关键设计**：接入层可以换（未来接第 4 个 harness），规程层和状态层不变。
 
+规程层内部再分两层：`bin/` + `skills/agentos` 是命令与规则；`drivercore/` 是驱动职责层（bootstrap / harness 模板 / session / tasktrack / worktree）。drivercore 公开版只含架构与实现，不随包内部/第三方 skill，不含任何运行数据。详见 [drivercore.md](drivercore.md)。
+
 ---
 
 ## 三、四条核心数据流
@@ -162,7 +164,8 @@ aos track release -Issue 900 -Task T1 -Owner codex -Note "交回主线"
 | 判据 | 命令 | 当前值 |
 |---|---|---|
 | 三 harness 是否统一 | `aos doctor` | `ok` 需安装；scripts 必须全过，skill hash 允许因未安装失败 |
-| 工具自身是否正确 | `tests/selftest.ps1` | **202/202 PASS**（2026-11-13，隔离沙箱，不碰生产数据） |
+| 工具自身是否正确 | `tests/selftest.ps1` | **209/209 PASS**（2026-11-12，隔离沙箱，不碰生产数据） |
+| drivercore 是否正确 | `drivercore/tasktrack/tests/tasktrack.tests.ps1` | **55/55 PASS**（2026-11-12，`%TEMP%` 隔离） |
 | 跨仓是否可感知 | `aos projects` | 计划 / 在飞 / worktree 汇总 |
 | 任务是否可追踪 | `aos track who` | 实时持有者 + 年龄 + 可接管性 |
 | 数据是否堆积 | `aos gc` | dry-run 报告可压缩量与可归档量 |
@@ -174,6 +177,7 @@ aos track release -Issue 900 -Task T1 -Owner codex -Note "交回主线"
 ```
 <homebase>\agentos\          本仓（功能仓库，可放在任意路径）
 ├─ bin/        14 个脚本（aos 是统一入口；ledger 是唯一台账模型）
+├─ drivercore/ 驱动职责层（bootstrap / harness / session / tasktrack / worktree；仅架构，无数据）
 ├─ docs/       文档（本文件在列）
 ├─ schema/     任务节点 schema
 ├─ templates/  PLAN 模板

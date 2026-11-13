@@ -1065,12 +1065,12 @@ try {
 } catch { }
 $results.Add([pscustomobject]@{ Case = 'audit cross-layer flags open task without lease'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $noLeaseCheck; Detail = '' })
 # --- public release surface: version / doctor / install dry-run / layout ---
-$versionOut = Test-Case 'version is 0.2.0' { & $aos version }
+$versionOut = Test-Case 'version is 0.3.0' { & $aos version }
 $versionCheck = 'FAIL'
 try {
-    if ((($versionOut | Out-String).Trim() -eq 'agentos 0.2.0')) { $versionCheck = 'PASS' }
+    if ((($versionOut | Out-String).Trim() -eq 'agentos 0.3.0')) { $versionCheck = 'PASS' }
 } catch { }
-$results.Add([pscustomobject]@{ Case = 'version reports 0.2.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $versionCheck; Detail = '' })
+$results.Add([pscustomobject]@{ Case = 'version reports 0.3.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $versionCheck; Detail = '' })
 
 $doctorCheck = 'FAIL'
 try {
@@ -1078,14 +1078,67 @@ try {
     $docJson = $docOut | ConvertFrom-Json
     $internalWord = 'driver' + 'core'
     $badChecks = @($docJson.checks | Where-Object { (($_.Group + '/' + $_.Item) -match $internalWord) -or ($_.Item -match 'harness adapters') })
-    if ($docJson.agentos -eq '0.2.0' -and @($docJson.checks).Count -eq 9 -and $badChecks.Count -eq 0) { $doctorCheck = 'PASS' }
+    if ($docJson.agentos -eq '0.3.0' -and @($docJson.checks).Count -eq 9 -and $badChecks.Count -eq 0) { $doctorCheck = 'PASS' }
 } catch { }
-$results.Add([pscustomobject]@{ Case = 'doctor checks public layout only and reports 0.2.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $doctorCheck; Detail = '' })
+$results.Add([pscustomobject]@{ Case = 'doctor checks public layout only and reports 0.3.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $doctorCheck; Detail = '' })
 
-$layoutBad = @('driver' + 'core', '.agentos', 'data', 'devops')
+$layoutBad = @('.agentos', 'data', 'devops', 'drivercore\skills')
 $layoutPresent = @($layoutBad | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
 $layoutCheck = if ($layoutPresent.Count -eq 0) { 'PASS' } else { 'FAIL present=' + ($layoutPresent -join ',') }
-$results.Add([pscustomobject]@{ Case = 'public tree excludes internal data / driver directories'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $layoutCheck; Detail = '' })
+$results.Add([pscustomobject]@{ Case = 'public tree excludes runtime data and drivercore skills'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $layoutCheck; Detail = '' })
+
+# --- drivercore edition: core architecture present, internal skills excluded ---
+$dcRoot = Join-Path $root 'drivercore'
+$dcFiles = @(
+    'README.md',
+    'bootstrap\bootstrap.ps1',
+    'bootstrap\bootstrap.sh',
+    'harness\AGENTS.template.md',
+    'harness\CLAUDE.template.md',
+    'harness\README.md',
+    'harness\adapters.json',
+    'session\README.md',
+    'tasktrack\README.md',
+    'tasktrack\tasktrack.ps1',
+    'tasktrack\install-watch-task.ps1',
+    'tasktrack\watch-hidden.vbs',
+    'tasktrack\tests\tasktrack.tests.ps1',
+    'worktree\README.md',
+    'worktree\wt.ps1'
+)
+$dcMissing = @($dcFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dcRoot $_)) })
+$dcLayoutCheck = if ($dcMissing.Count -eq 0) { 'PASS' } else { 'FAIL missing=' + ($dcMissing -join ',') }
+$results.Add([pscustomobject]@{ Case = 'drivercore core architecture files present (15)'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $dcLayoutCheck; Detail = '' })
+
+$dcSkillsPresent = Test-Path -LiteralPath (Join-Path $dcRoot 'skills')
+$results.Add([pscustomobject]@{ Case = 'drivercore/skills is not shipped'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $(if ($dcSkillsPresent) { 'FAIL skills present' } else { 'PASS' }); Detail = '' })
+
+$adapterCheck = 'FAIL'
+try {
+    $ad = Get-Content -LiteralPath (Join-Path $dcRoot 'harness\adapters.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $agentKeys = @($ad.agents | ForEach-Object { $_.key })
+    $skillNames = @($ad.skills.names)
+    if ($ad.schema_version -eq 1 -and $ad.installer -eq 'install.ps1' -and ($agentKeys -contains 'claude') -and ($agentKeys -contains 'codex') -and ($agentKeys -contains 'dsh') -and $skillNames.Count -eq 1 -and $skillNames[0] -eq 'agentos') { $adapterCheck = 'PASS' }
+} catch { }
+$results.Add([pscustomobject]@{ Case = 'drivercore adapters.json declares only the agentos skill'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $adapterCheck; Detail = '' })
+
+$bootProbe = Join-Path $sandbox 'drivercore-bootstrap-probe'
+Test-Case 'drivercore bootstrap dry-run exits 0' {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dcRoot 'bootstrap\bootstrap.ps1') -DryRun -HomeBase $bootProbe
+} | Out-Null
+$bootWrote = @('AGENTS.md', 'CLAUDE.md', 'data') | Where-Object { Test-Path -LiteralPath (Join-Path $bootProbe $_) }
+$bootCheck = if (@($bootWrote).Count -eq 0) { 'PASS' } else { 'FAIL wrote=' + (@($bootWrote) -join ',') }
+$results.Add([pscustomobject]@{ Case = 'drivercore bootstrap dry-run writes nothing'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $bootCheck; Detail = '' })
+
+$watchProbe = Join-Path $sandbox 'drivercore-watch-probe'
+$watchOut = Test-Case 'drivercore watch installer dry-run exits 0' {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dcRoot 'tasktrack\install-watch-task.ps1') -DryRun -HomeBase $watchProbe
+}
+$watchCheck = 'FAIL'
+try {
+    if ((($watchOut | Out-String) -match 'agentos-tasktrack-watch') -and -not (Test-Path -LiteralPath $watchProbe)) { $watchCheck = 'PASS' }
+} catch { }
+$results.Add([pscustomobject]@{ Case = 'drivercore watch installer dry-run registers nothing'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $watchCheck; Detail = '' })
 
 $installOut = Test-Case 'install.ps1 dry-run installs only agentos skill' {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'install.ps1') -Target claude -NoRules -NoPath -DryRun

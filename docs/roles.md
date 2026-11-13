@@ -15,7 +15,7 @@
 1. **主会话只派发，不执行任务**：Master 不写代码、不改文件、不跑长命令、不占 GPU、不做远端操作；只做 snapshot/plan/graph/派发/track review/close、只读验收和单步只读问答。
 2. **每个 PLAN 节点 = 一个 subagent**；同一 wave 的所有节点必须并行派发；串行执行可并行任务 = 违规。
 3. **只有 Master 能派发**，Worker 不再派生；Sub-Master 递归深度 ≤ 3。
-4. **Sub-Master 必须同步等待**其子代理返回，禁止 fire-and-forget（子代理生命周期结束会连带回收进程树——2026-10-14 实际踩坑）。
+4. **Sub-Master 必须同步等待**其子代理返回，禁止 fire-and-forget（子代理生命周期结束会连带回收进程树——实战踩坑）。
 5. **只有 Master 能开 worktree**；Worker 在自己被分配的树里写，严禁 `git worktree add`。
 6. **Issue 先行**：git 仓库必须走 GitHub/GitLab issue；非 git 仓库必须先建本地 `.agentos/issues/ISSUE-<id>.md`，再建 PLAN；没有 issue/PLAN 不得派发。
 

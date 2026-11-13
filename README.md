@@ -27,6 +27,18 @@ AgentOS 交付的是**方法**，不是环境。
 
 所以它可以被放在任何机器、任何路径、服务任何项目——**agent 按自己的环境自动适配**。
 
+## drivercore（v0.3.0，architecture-only）
+
+v0.3.0 起公开仓包含 drivercore 驱动职责层：`bootstrap/`（bootstrap 入口）、`harness/`（三 harness 适配模板与 manifest）、`session/`（会话在场模型）、`tasktrack/`（长任务看门狗）、`worktree/`（兼容转发器）。
+
+公开的是**架构与实现**，不是运行现场：
+
+- 不含任何运行数据、真实主机名、凭据、任务状态、日志、租约或 PFX；
+- `drivercore/skills` 不随包（内部与第三方 skill 不对外）；
+- 安装只复制 `skills/agentos`；bootstrap 只做前置检查、模板发布与安装委托。
+
+架构边界与设计细节见 [docs/drivercore.md](docs/drivercore.md)。
+
 ## AI-native 契约（第一宗旨）
 
 **所有产出以 agent 为第一消费者。**
@@ -77,7 +89,7 @@ cd <homebase>\agentos
 .\install.ps1 -Target all -NoPath  # 不修改用户 PATH
 ```
 
-安装只复制 `skills/agentos`，不会安装本仓之外的 skill。
+安装只复制 `skills/agentos`，不会安装本仓之外的 skill；`drivercore/skills` 不随包，bootstrap 不要求额外 skill 目录。
 
 验证：
 
@@ -143,13 +155,14 @@ aos hygiene                          # 只读检查；-Reap 需确认
 
 ## 版本
 
-当前 **v0.2.0**。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前 **v0.3.0**。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 文档索引
 
 | 文档 | 内容 |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | 仓库架构 + workspace 架构两张图、一次任务的完整路径 |
+| [docs/drivercore.md](docs/drivercore.md) | **drivercore 架构边界**：bootstrap / harness / session / tasktrack / worktree，数据与 skill 边界 |
 | [docs/data-model.md](docs/data-model.md) | **四类数据结构 + 能力×数据映射矩阵 + 不变量 + 解耦边界** |
 | [docs/ai-native.md](docs/ai-native.md) | AI-native 五条硬契约（机器可读 / 快照 / 退出码 / 状态落文件 / 幂等） |
 | [docs/output-contract.md](docs/output-contract.md) | 每个命令的输出形状与退出码契约 |
@@ -169,9 +182,10 @@ aos hygiene                          # 只读检查；-Reap 需确认
 
 ```
 bin/         aos.ps1 (入口) + plan / wt / issue / track / session / room / audit / ledger / artifact
+drivercore/  驱动职责层：bootstrap / harness / session / tasktrack / worktree（architecture-only）
 schema/      任务节点与资源 JSON Schema
 templates/   PLAN 模板
-docs/        生命周期 / 并发 / 角色 / 适配器 / 资源模型
+docs/        生命周期 / 并发 / 角色 / 适配器 / 资源模型 / drivercore
 skills/      装到三工具的 skill 包（agentos 规程正文）
 examples/    可用示例
 tests/       selftest + artifact 测试
@@ -180,11 +194,12 @@ tests/       selftest + artifact 测试
 ## 验证
 
 ```powershell
-.\tests\selftest.ps1         # 隔离沙箱，不碰真实仓库
-.\tests\artifact.tests.ps1   # 生成物固定根与路径安全
+.\tests\selftest.ps1                        # 隔离沙箱，不碰真实仓库
+.\tests\artifact.tests.ps1                  # 生成物固定根与路径安全
+.\drivercore\tasktrack\tests\tasktrack.tests.ps1   # tasktrack 完成判定（55 条）
 ```
 
-当前状态：`tests/selftest.ps1` **202/202 PASS**，`tests/artifact.tests.ps1` **24/24 PASS**（2026-11-13）。改动脚本后必须重跑。
+当前状态：`tests/selftest.ps1` **209/209 PASS**，`tests/artifact.tests.ps1` **24/24 PASS**，`drivercore/tasktrack/tests/tasktrack.tests.ps1` **55/55 PASS**（2026-11-12）。改动脚本后必须重跑。
 
 ## 平台
 

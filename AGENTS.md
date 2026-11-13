@@ -27,6 +27,7 @@ AgentOS 是 **本机最高权限的执行系统**，以 skill 形式分发给所
 - 业务数据由业务仓通过 `.agentos/` 目录**自带**；AgentOS 只读取契约，不拥有内容。
 - 脚本里**禁止硬编码业务默认值**；需要路径时由调用方传 `-Repo`，或取当前工作目录。
 - 环境相关值（如 GitLab 主机）走环境变量（`AGENTOS_GITLAB_HOSTS`），不写死。
+- **drivercore 公开版只含架构与实现**：核心驱动层（bootstrap / harness / session / tasktrack / worktree）随包；`drivercore/skills` 不随包；仓库不含任何运行数据、日志、租约或真实值。
 
 判据：`aos doctor` 通过 + 用业务关键词扫描仓库应为零命中。
 
@@ -88,6 +89,7 @@ git 仓库不允许用本地 issue 代替 issue tracker；非 git 任务不允�
 ## 目录
 
 - `bin/` — 可执行脚本（`aos.ps1` 是统一入口；`ledger.ps1` 是任务/policy/session 唯一台账模型）
+- `drivercore/` — 驱动职责层：`bootstrap/`（bootstrap 入口）、`harness/`（三 harness 适配模板与 manifest）、`session/`（会话模型）、`tasktrack/`（长任务看门狗）、`worktree/`（兼容转发器）；公开版只含架构与实现，`drivercore/skills` 不随包
 - `schema/` — 数据结构定义
 - `templates/` — PLAN / 规则片段模板
 - `docs/` — 生命周期、并发、角色、适配器、资源模型、生成物
@@ -99,4 +101,4 @@ git 仓库不允许用本地 issue 代替 issue tracker；非 git 任务不允�
 - 平台：Windows / PowerShell 5.1+（宿主默认 5.1，禁用 PS7-only 特性如 `-AsHashtable`）
 - **所有 `.ps1` 必须存为 UTF-8 with BOM**——PS5.1 对无 BOM 文件按 GBK 解码，中文会变乱码并导致语法错误
 - 改动脚本后必须跑 `bin/aos.ps1 doctor`
-- 任何脚本改动后必须跑 `tests/selftest.ps1` 与 `tests/artifact.tests.ps1`，全部用例通过才允许提交（当前基线：selftest 202/202、artifact 24/24）
+- 任何脚本改动后必须跑 `tests/selftest.ps1` 与 `tests/artifact.tests.ps1`，全部用例通过才允许提交（当前基线：selftest 209/209、artifact 24/24）；改动 drivercore 时同时跑 `drivercore/tasktrack/tests/tasktrack.tests.ps1`（55/55）

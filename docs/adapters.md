@@ -26,6 +26,7 @@
 ```
 
 安装统一由 `install.ps1` 执行；它只复制 `skills/agentos`，不会安装本仓之外的 skill。
+公开版 `drivercore/skills` 不随包；drivercore 的 adapter 矩阵与机器可读 manifest 见 `drivercore/harness/README.md` 与 `drivercore/harness/adapters.json`（`skills.names` 只有 `agentos`）。
 
 ## PATH
 

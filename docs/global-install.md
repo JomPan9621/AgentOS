@@ -14,6 +14,8 @@
 
 `-DryRun` 只打印计划，不写 `<user-profile>`、不写 homebase、不改 PATH。
 
+公开版只安装 `skills/agentos`：`drivercore/skills` 不随包；`drivercore/bootstrap/bootstrap.ps1` 只委托 `install.ps1`，不会要求额外 skill 目录。
+
 ## 受管块
 
 注入内容用标记包裹，**幂等可重装、可干净卸载**：

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "installer": "install.ps1",
+  "bootstrap": {
+    "windows": "drivercore/bootstrap/bootstrap.ps1",
+    "posix": "drivercore/bootstrap/bootstrap.sh",
+    "installer": "install.ps1",
+    "note": "bootstrap only preflights and delegates to install.ps1; -DryRun never writes"
+  },
+  "session": {
+    "entry": "bin/session.ps1",
+    "command": "aos session register|heartbeat|close|list",
+    "binding": "requires aos track start -Plan -Subagent"
+  },
+  "skills": {
+    "core": "skills/agentos",
+    "extra": null,
+    "names": ["agentos"],
+    "note": "public edition installs skills/agentos only; optional extra skills are not shipped"
+  },
+  "agents": [
+    {
+      "key": "claude",
+      "name": "Claude Code",
+      "skill": "~/.claude/skills/agentos",
+      "rules": "~/.claude/CLAUDE.md",
+      "rules_mode": "managed-block"
+    },
+    {
+      "key": "codex",
+      "name": "Codex",
+      "skill": "~/.codex/skills/agentos",
+      "rules": "~/.codex/AGENTS.md",
+      "rules_mode": "managed-block"
+    },
+    {
+      "key": "dsh",
+      "name": "DSH",
+      "skill": "~/.dsh/skills/agentos",
+      "rules": "~/.dsh/AGENTS.md",
+      "rules_mode": "managed-block",
+      "skill_override": "-DshSkills"
+    }
+  ],
+  "templates": {
+    "agents": "drivercore/harness/AGENTS.template.md",
+    "claude": "drivercore/harness/CLAUDE.template.md"
+  },
+  "policy": {
+    "write_to_user_profile": false,
+    "note": "install.ps1 is the only installer; this directory never writes by itself"
+  }
+}

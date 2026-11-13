@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## v0.3.0 — 2026-11-12
+
+**architecture-only drivercore edition。** 公开 drivercore 的核心架构与实现，不含任何数据或运行现场。
+
+### 新增能力
+
+- **drivercore 驱动层**：`drivercore/README.md` —— 驱动职责、单一来源与数据边界。
+- **bootstrap**：`drivercore/bootstrap/bootstrap.ps1` / `bootstrap.sh` —— 前置检查、homebase 模板发布、委托 `install.ps1`；`-DryRun` 不写用户目录 / homebase / PATH。
+- **harness 适配**：`drivercore/harness/` —— Claude / Codex / DSH 的 adapter 矩阵、`AGENTS.template.md` / `CLAUDE.template.md` 与机器可读 `adapters.json`（只声明 `agentos` skill）。
+- **session 模型**：`drivercore/session/README.md` —— 会话在场（register / heartbeat / close / list）与 track 的边界。
+- **tasktrack 看门狗**：`drivercore/tasktrack/` —— 双信号存活判定、完成信号自动销账、失联告警、周期巡检接入（`install-watch-task.ps1 -TaskName` 可覆盖任务名）与 55 条测试。
+- **worktree 转发器**：`drivercore/worktree/wt.ps1` —— 兼容转发到 `bin/wt.ps1`，不维护第二份实现。
+- **文档**：新增 `docs/drivercore.md`；README / AGENTS / SECURITY / architecture / adapters / global-install 同步边界。
+
+### 边界
+
+- **只公开架构**：不含任何数据、运行状态、真实主机名、IP、用户名、凭据、任务名、日志、租约、PFX 或内部路径。
+- `drivercore/skills` 不随包：内部流程与第三方 skill 不在公开范围。
+- 安装只复制 `skills/agentos`；bootstrap 不要求额外 skill 目录。
+- v0.1.0 / v0.2.0 历史与契约保持不变；版本统一 `0.3.0`。
+
+### 质量
+
+- `tests/selftest.ps1` **209/209 PASS**、`tests/artifact.tests.ps1` **24/24 PASS**、`drivercore/tasktrack/tests/tasktrack.tests.ps1` **55/55 PASS**（2026-11-12，隔离 `%TEMP%` 沙箱）。
+- `aos version` 输出 `agentos 0.3.0`；`aos doctor` 仍为 9 项公开 layout 检查。
+- 平台：Windows / PowerShell 5.1+（`.ps1` 必须 UTF-8 with BOM）。
+
+### 安装
+
+```powershell
+git clone https://github.com/JomPan9621/AgentOS.git <homebase>\agentos
+cd <homebase>\agentos
+.\install.ps1 -Target all          # skill + 全局规则块 + aos shim
+.\install.ps1 -Target all -NoPath  # 不修改用户 PATH
+```
+
+验证：`aos version`（应 `agentos 0.3.0`）、`.\tests\selftest.ps1` 与 `drivercore\tasktrack\tests\tasktrack.tests.ps1`。
+
 ## v0.2.0 — 2026-11-13
 
 公开版功能增量。v0.2.0 是纯功能子集：不含任何业务数据、真实主机清单或内部运行架构。

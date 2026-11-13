@@ -193,7 +193,7 @@ function Invoke-Doctor {
     } else {
         $payload = [pscustomobject]@{
             ok      = ($scriptsOk -and $failed.Count -eq 0)
-            agentos = '0.2.0'
+            agentos = '0.3.0'
             checks  = @($rows)
             failed  = @($failed | ForEach-Object { $_.Group + '/' + $_.Item })
         }
@@ -221,6 +221,6 @@ switch ($Command) {
     'gc' { Invoke-Sub 'gc.ps1' }
     'audit' { Invoke-Sub 'audit.ps1' }
     'doctor' { Invoke-Doctor -HumanOut:$humanOut }
-    'version' { Write-Output 'agentos 0.2.0'; exit 0 }
+    'version' { Write-Output 'agentos 0.3.0'; exit 0 }
     default { Show-Help; exit 0 }
 }
