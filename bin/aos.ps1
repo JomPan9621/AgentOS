@@ -8,7 +8,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('plan', 'wt', 'issue', 'track', 'snapshot', 'projects', 'room', 'hygiene', 'gc', 'doctor', 'version', 'help')]
+    [ValidateSet('plan', 'wt', 'issue', 'track', 'session', 'snapshot', 'projects', 'room', 'hygiene', 'artifact', 'gc', 'audit', 'doctor', 'version', 'help')]
     [string]$Command = 'help',
     [switch]$Human,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -26,10 +26,16 @@ function Show-Help {
   projects  cross-repo overview: plans / active / worktrees / issue source
   room      remote resources: list / check / acquire / release machine leases
   hygiene   harness process hygiene: detect leaked helper processes, report machine pressure'
+    Write-Output '  artifact  generated files home: path | list  (fixed under <homebase>\devops\agentos\artifacts)'
     Write-Output '  plan      new | validate | graph | next | state | show'
     Write-Output '  wt        list | new | status | prune'
     Write-Output '  issue     detect | new | show | list'
-    Write-Output '  track     start | review | close | claim | release | handoff | who | list | lost'
+    Write-Output '  track     start | review | close | block | abandon | claim | release | handoff | who | list | lost'
+    Write-Output '            close -Plan auto-reconciles state/ledger and runs read-only audit / wt prune / hygiene'
+    Write-Output '            -SkipReclaim is for tests/batch close only; destructive -Apply/-Reap is never automatic'
+    Write-Output '  session   register | heartbeat | close | list  (harness presence; bound to a tracked task; ledger-only)'
+    Write-Output '  audit     PLAN / state / ledger / lease reconciliation; -Backfill restores provable gaps'
+    Write-Output '            -InitPolicy requires -PfxPath/-PfxPassword; policy events are PFX-signed and append-only'
     Write-Output '  gc        lifecycle reclaim: ledger compaction + closed-plan archive (dry-run by default)'
     Write-Output '  doctor    unification self-check across the three agents'
     Write-Output '  version'
@@ -41,7 +47,11 @@ function Show-Help {
     Write-Output '  aos plan validate -Plan <file>'
     Write-Output '  aos plan graph -Plan <file>'
     Write-Output '  aos wt new -Issue 271 -Slug attn-fence -Repo <path>'
-    Write-Output '  aos track start -Issue 271 -Task T1 -Owner codex'
+    Write-Output '  aos track start -Issue 271 -Task T1 -Owner codex -Plan <file> -Subagent <label>'
+    Write-Output '  aos track close -Issue 271 -Task T1 -Plan <file>   # auto reconcile + read-only checks'
+    Write-Output '  aos session register -Issue 271 -Task T1 -Role worker -Host <machine>'
+    Write-Output '  aos session heartbeat -Id <sid>'
+    Write-Output '  aos session close -Id <sid>'
     Write-Output '  aos track who                                   # who holds what, what is claimable'
     Write-Output '  aos track claim -Issue 271 -Task T1 -Owner dsh   # take over another harness task'
     Write-Output '  aos wt prune            # dry-run inventory'
@@ -109,9 +119,9 @@ function Invoke-Doctor {
     $home_ = [Environment]::GetFolderPath('UserProfile')
     $rows = [System.Collections.Generic.List[object]]::new()
 
-    $need = @('plan.ps1', 'wt.ps1', 'issue.ps1', 'track.ps1', 'snapshot.ps1', 'projects.ps1', 'room.ps1', 'hygiene.ps1', 'gc.ps1')
+    $need = @('plan.ps1', 'wt.ps1', 'issue.ps1', 'track.ps1', 'session.ps1', 'snapshot.ps1', 'projects.ps1', 'room.ps1', 'hygiene.ps1', 'artifact.ps1', 'gc.ps1', 'audit.ps1', 'ledger.ps1')
     $missing = @($need | Where-Object { -not (Test-Path -LiteralPath (Join-Path $bin $_)) })
-    $detail = if ($missing.Count -gt 0) { 'missing ' + ($missing -join ',') } else { '9/9 present' }
+    $detail = if ($missing.Count -gt 0) { 'missing ' + ($missing -join ',') } else { ('{0}/{0} present' -f $need.Count) }
     $rows.Add([pscustomobject]@{ Group = 'scripts'; Item = 'bin'; Ok = ($missing.Count -eq 0); Detail = $detail })
 
     $repoSkill = Join-Path $bin '..\skills\agentos\SKILL.md'
@@ -183,7 +193,7 @@ function Invoke-Doctor {
     } else {
         $payload = [pscustomobject]@{
             ok      = ($scriptsOk -and $failed.Count -eq 0)
-            agentos = '0.1.0'
+            agentos = '0.2.0'
             checks  = @($rows)
             failed  = @($failed | ForEach-Object { $_.Group + '/' + $_.Item })
         }
@@ -202,12 +212,15 @@ switch ($Command) {
     'wt' { Invoke-Sub 'wt.ps1' }
     'issue' { Invoke-Sub 'issue.ps1' }
     'track' { Invoke-Sub 'track.ps1' }
+    'session' { Invoke-Sub 'session.ps1' }
     'snapshot' { Invoke-Sub 'snapshot.ps1' }
     'projects' { Invoke-Sub 'projects.ps1' }
     'hygiene' { Invoke-Sub 'hygiene.ps1' }
+    'artifact' { Invoke-Sub 'artifact.ps1' }
     'room' { Invoke-Sub 'room.ps1' }
     'gc' { Invoke-Sub 'gc.ps1' }
+    'audit' { Invoke-Sub 'audit.ps1' }
     'doctor' { Invoke-Doctor -HumanOut:$humanOut }
-    'version' { Write-Output 'agentos 0.1.0'; exit 0 }
+    'version' { Write-Output 'agentos 0.2.0'; exit 0 }
     default { Show-Help; exit 0 }
 }

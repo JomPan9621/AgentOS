@@ -1,10 +1,21 @@
 # 本地状态与生成物
 .agentos/state/
 .agentos/plans/*.state.json
+devops/
+data/
 *.log
 
-# PowerShell 备份
+# 密钥与证书
+*.pfx
+*.pem
+*.key
+
+# PowerShell
 *.ps1.bak
+
+# Python / 运行产物
+__pycache__/
+*.pyc
 
 # 编辑器
 .vscode/

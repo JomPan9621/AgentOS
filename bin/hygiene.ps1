@@ -111,7 +111,7 @@ if ($Reap -and $leakedGroups.Count -gt 0) {
 }
 
 $out = [pscustomobject]@{
-    ok          = $true
+    ok          = ($leakedGroups.Count -eq 0)
     dryRun      = (-not $Reap)
     thresholds  = [pscustomobject]@{ maxCount = $MaxCount; staleHours = $StaleHours; minAgeHours = $MinAgeHours }
     machine     = [pscustomobject]@{ cpu_percent = $cpuPct; mem_used_gb = $memUsedGb; mem_total_gb = $memTotalGb }

@@ -38,7 +38,8 @@
                       ┌─────────┴─────────┐
                       ▼                   ▼
               ┌──────────────┐    ┌──────────────┐
-              │ project/ 业务 │    │ devops/ 生成物│
+              │ 业务仓（自带 │    │ 本机生成物    │
+              │ .agentos）   │    │ （不入 git）  │
               └──────────────┘    └──────────────┘
 ```
 
@@ -70,16 +71,16 @@ aos issue detect -Repo <repo>          # GitHub 必走 issue / GitLab / 本地�
 aos plan new -Issue 308 -Title "..." -Repo <repo>
 aos plan validate -Plan PLAN-308.md    # 不通过不许开工
 aos plan graph    -Plan PLAN-308.md    # 输出 wave：哪些能并行由 DAG 算
-aos track start   -Issue 308 -Task T3 -Owner codex
-aos track review  -Issue 308 -Task T3
-aos track close   -Issue 308 -Task T3
+aos track start   -Issue 308 -Task T3 -Owner codex -Plan <file> -Subagent <label>
+aos track review  -Issue 308 -Task T3 -Plan <file>
+aos track close   -Issue 308 -Task T3 -Plan <file>   # auto reconcile + read-only reclaim
 ```
 
 ### 3.2 互相感知（看得见彼此）
 
 ```powershell
 aos snapshot -Repo <repo>    # 单仓全景：plan / schedule / worktrees / active / ledger / attention
-aos projects                 # 跨仓全景：7 个真仓、计划数、在飞任务、worktree、issue 源
+aos projects                 # 跨仓全景：计划数、在飞任务、worktree、issue 源
 aos track who                # 谁持有什么任务、跑了多久、可不可接管
 ```
 
@@ -134,17 +135,23 @@ aos track release -Issue 900 -Task T1 -Owner codex -Note "交回主线"
 
 ---
 
-## 四、七个命令，一张表
+## 四、命令集
 
 | 命令 | 作用 | 默认输出 |
 |---|---|---|
 | `aos snapshot` | 单仓全景快照 | JSON |
 | `aos projects` | 跨仓总览 | JSON |
-| `aos plan` | new / validate / graph / next / state / show | JSON |
+| `aos plan` | new / validate / graph / next / state / show / resources | JSON |
 | `aos wt` | list / new / status / prune | JSON |
 | `aos issue` | detect / new / show / list | JSON |
-| `aos track` | start / review / close / **claim / release / handoff / who** / list / lost | JSON |
+| `aos track` | start / review / close / block / abandon / claim / release / handoff / who / list / lost | JSON |
+| `aos session` | register / heartbeat / close / list | JSON |
+| `aos room` | list / show / check / acquire / release | JSON |
+| `aos hygiene` | 检测泄漏 helper 进程与机器压力 | JSON |
+| `aos artifact` | path / list —— 生成物固定根 | JSON |
+| `aos audit` | PLAN / state / ledger / lease 对账，可 -Backfill | JSON |
 | `aos gc` | 台账压缩 + 已完结计划归档 | JSON |
+| `aos doctor` | 三 harness 安装面自检 | JSON |
 
 **共同契约**：默认 JSON、`-Human` 才出表格、退出码 `0 成功 / 1 错误 / 2 需治理`。
 
@@ -154,9 +161,9 @@ aos track release -Issue 900 -Task T1 -Owner codex -Note "交回主线"
 
 | 判据 | 命令 | 当前值 |
 |---|---|---|
-| 三 harness 是否统一 | `aos doctor` | `ok=True`，9 项检查（skill×3 / rules×3 / path×2 / scripts） |
-| 工具自身是否正确 | `tests/selftest.ps1` | **36/36 PASS**（隔离沙箱，不碰生产数据） |
-| 跨仓是否可感知 | `aos projects` | 7 仓 / 39 worktree / 2 超限 |
+| 三 harness 是否统一 | `aos doctor` | `ok` 需安装；scripts 必须全过，skill hash 允许因未安装失败 |
+| 工具自身是否正确 | `tests/selftest.ps1` | **202/202 PASS**（2026-11-13，隔离沙箱，不碰生产数据） |
+| 跨仓是否可感知 | `aos projects` | 计划 / 在飞 / worktree 汇总 |
 | 任务是否可追踪 | `aos track who` | 实时持有者 + 年龄 + 可接管性 |
 | 数据是否堆积 | `aos gc` | dry-run 报告可压缩量与可归档量 |
 
@@ -165,18 +172,20 @@ aos track release -Issue 900 -Task T1 -Owner codex -Note "交回主线"
 ## 六、目录与落地位置
 
 ```
-<homebase>\agentos\          仓库（GitLab / GitHub）
-├─ bin/        7 个脚本（aos 是统一入口）
-├─ docs/       10 篇文档（本文件在列）
+<homebase>\agentos\          本仓（功能仓库，可放在任意路径）
+├─ bin/        14 个脚本（aos 是统一入口；ledger 是唯一台账模型）
+├─ docs/       文档（本文件在列）
 ├─ schema/     任务节点 schema
 ├─ templates/  PLAN 模板
 ├─ skills/     skill 包（装进三个 harness）
-└─ tests/      selftest 36 用例
+└─ tests/      selftest 与 artifact 测试
 
 运行时状态
 ├─ <repo>/.agentos/plans/PLAN-*.md           计划
 ├─ <repo>/.agentos/plans/*.state.json        节点状态
-├─ <homebase>\devops\agentos\ledger.jsonl   审计流水
+├─ <homebase>\devops\agentos\ledger.jsonl   审计流水（task/policy/session）
+├─ <homebase>\devops\agentos\leases\        机器租约（issue/agent_task）
+├─ <homebase>\devops\agentos\artifacts\     生成物固定根
 └─ <homebase>\devops\agentos\archive\      归档计划
 ```
 

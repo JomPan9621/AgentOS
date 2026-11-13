@@ -14,7 +14,7 @@ param(
     [string]$Slug = '',
     [string]$Base = 'master',
     [string]$TargetRef = 'refs/remotes/origin/master',
-    [int]$Limit = 5,
+    [int]$Limit = 8,
     [switch]$Apply,
     [switch]$Force,
     [switch]$IncludeIgnored,

@@ -8,9 +8,11 @@
 
 | # | 内容 | 落点 | 生效范围 |
 |---|---|---|---|
-| 1 | skill 副本 | `~/.claude/skills/agentos`、`~/.codex/skills/agentos`、`~/.dsh/skills/agentos` | 用户级，任意目录可见 |
+| 1 | skill 副本（仅 `skills/agentos`） | `~/.claude/skills/`、`~/.codex/skills/`、`~/.dsh/skills/` 下对应 skill 目录 | 用户级，任意目录可见 |
 | 2 | 全局规则块（受管） | `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、`~/.dsh/AGENTS.md` | 用户级，任意目录自动加载 |
 | 3 | `aos` 命令 | `~/.agentos/bin/aos.cmd` + 用户 PATH | 任意目录可调用 |
+
+`-DryRun` 只打印计划，不写 `<user-profile>`、不写 homebase、不改 PATH。
 
 ## 受管块
 
@@ -18,7 +20,7 @@
 
 ```html
 <!-- >>> agentos managed (global) >>> -->
-... 四条 MUST ...
+... 六条 MUST ...
 <!-- <<< agentos managed <<< -->
 ```
 
@@ -52,5 +54,5 @@ aos snapshot -Repo <任意仓库>
 ## 已知限制
 
 1. **PATH 只对新 shell 生效**——当前会话需要开新终端或直接用全路径。
-2. **工作区锚定规则仍然只管 `<homebase>`**——AgentOS 规程全局生效，但根据地规则（`<homebase>\AGENTS.md` 的 §1 工作区域锚定）只在根据地内适用。两者是分层关系，不冲突。
+2. **全局规程与工作区规则分层**——AgentOS 规程全局生效；工作区自己的 `AGENTS.md` 规则只在对应目录内适用，不冲突。
 3. **PS 5.1 兼容**——所有 `.ps1` 必须 UTF-8 with BOM，否则中文乱码导致解析失败。

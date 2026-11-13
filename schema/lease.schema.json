@@ -22,6 +22,14 @@
       "type": "string",
       "description": "占用者任务标识"
     },
+    "issue": {
+      "type": "string",
+      "description": "关联 issue（AgentOS）"
+    },
+    "agent_task": {
+      "type": "string",
+      "description": "关联 AgentOS PLAN 节点（如 T1）"
+    },
     "note": {
       "type": "string"
     },

@@ -5,6 +5,7 @@
   解决"任务数据无限堆叠"：
     1. ledger.jsonl 压缩 —— 只保留「最近 N 天」或「仍未关闭」的任务事件
     2. 已完结计划归档 —— 所有节点都 done/abandoned 的 PLAN 移到 archive/
+  默认扫描 <homebase>\project 与 <homebase>\repo（含 deliveries 等嵌套目录）；linked worktree 不算独立仓。
   exit 0 正常 / 1 错误 / 2 有可回收项（dry-run 时）
 #>
 [CmdletBinding()]
@@ -12,6 +13,7 @@ param(
     [string]$Ledger = '',
     [string]$ArchiveRoot = '',
     [string]$ProjectRoot = '',
+    [string[]]$Roots = @(),
     [int]$KeepDays = 30,
     [switch]$Apply,
     [switch]$Human
@@ -23,9 +25,52 @@ $homeBase = $env:AGENTOS_HOME
 if ([string]::IsNullOrWhiteSpace($homeBase)) { $homeBase = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 if ([string]::IsNullOrWhiteSpace($Ledger)) { $Ledger = Join-Path $homeBase 'devops\agentos\ledger.jsonl' }
 if ([string]::IsNullOrWhiteSpace($ArchiveRoot)) { $ArchiveRoot = Join-Path $homeBase 'devops\agentos\archive' }
-if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Join-Path $homeBase 'project' }
+# 统一 ledger 模型：任务未关闭判定复用 bin/ledger.ps1，不维护第二套状态机
+. (Join-Path $PSScriptRoot 'ledger.ps1')
 $machine = -not $Human
 $cutoff = (Get-Date).AddDays(-$KeepDays)
+
+$searchRoots = @()
+if (-not [string]::IsNullOrWhiteSpace($ProjectRoot)) { $searchRoots += $ProjectRoot }
+if (@($Roots).Count -gt 0) { $searchRoots += @($Roots) }
+if (@($searchRoots).Count -eq 0) {
+    $searchRoots = @(
+        (Join-Path $homeBase 'project'),
+        (Join-Path $homeBase 'repo')
+    )
+}
+$searchRoots = @($searchRoots | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path } | Select-Object -Unique)
+
+function Find-PlanDirs {
+    param([string[]]$SearchRoots)
+    $found = [System.Collections.Generic.List[string]]::new()
+    $seen = @{}
+    $skip = @('.git', 'node_modules', '.venv', 'venv', 'out', 'build', 'dist', '.cache', '__pycache__', 'archive', '.idea', '.vscode')
+    function Add-Dir([string]$Dir) {
+        $full = [IO.Path]::GetFullPath($Dir).TrimEnd('\')
+        $key = $full.ToLowerInvariant()
+        if (-not $seen.ContainsKey($key)) { $seen[$key] = $true; $found.Add($full) }
+    }
+    foreach ($root in $SearchRoots) {
+        $stack = [System.Collections.Generic.Stack[object]]::new()
+        $stack.Push([pscustomobject]@{ Path = $root; Depth = 0 })
+        while ($stack.Count -gt 0) {
+            $item = $stack.Pop()
+            $dir = $item.Path
+            $depth = [int]$item.Depth
+            if ($depth -gt 8) { continue }
+            if ($depth -gt 0 -and $skip -contains (Split-Path $dir -Leaf)) { continue }
+            $plans = Join-Path $dir '.agentos\plans'
+            if (Test-Path -LiteralPath $plans) { Add-Dir $plans }
+            if ($depth -ge 8) { continue }
+            foreach ($child in (Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue)) {
+                if ($skip -contains $child.Name) { continue }
+                $stack.Push([pscustomobject]@{ Path = $child.FullName; Depth = $depth + 1 })
+            }
+        }
+    }
+    return @($found | Sort-Object)
+}
 
 function Get-LedgerStats {
     param([string]$Path)
@@ -33,22 +78,18 @@ function Get-LedgerStats {
         return [pscustomobject]@{ Exists = $false; Total = 0; Keep = 0; Drop = 0; Bytes = 0; OpenTasks = 0 }
     }
     $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    $events = @()
-    foreach ($l in $lines) { try { $events += ($l | ConvertFrom-Json) } catch { } }
 
-    # 判定哪些 task 仍未关闭
-    $open = @{}
-    foreach ($e in $events) {
-        $k = [string]$e.issue + '|' + [string]$e.task
-        if ($e.event -eq 'close') { $open.Remove($k) }
-        else { $open[$k] = $true }
-    }
+    # 未关闭任务集合由 bin/ledger.ps1 统一计算（已排除 policy/session 事件）
+    $open = Get-OpenLedgerTasks -Events (Read-LedgerEvents -Path $Path)
 
     $keep = @()
     $drop = 0
     foreach ($l in $lines) {
         $e = $null
         try { $e = $l | ConvertFrom-Json } catch { $keep += $l; continue }
+        $ev = [string]$e.event
+        # policy（append-only 授权链）与 session（在场证明）永不压缩
+        if ($ev -eq 'policy' -or $ev -like 'session-*') { $keep += $l; continue }
         $k = [string]$e.issue + '|' + [string]$e.task
         $isOpen = $open.ContainsKey($k)
         $isRecent = $true
@@ -67,48 +108,57 @@ function Get-LedgerStats {
 }
 
 function Get-PlanBacklog {
-    param([string]$Root, [int]$Days)
-    if (-not (Test-Path -LiteralPath $Root)) { return @() }
+    param([string[]]$PlanDirs, [int]$Days)
     $rows = @()
-    foreach ($plan in (Get-ChildItem -LiteralPath $Root -Recurse -Filter 'PLAN-*.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\\.agentos\\plans\\' })) {
-        $statePath = [IO.Path]::ChangeExtension($plan.FullName, '.state.json')
-        $statuses = @{}
-        if (Test-Path -LiteralPath $statePath) {
-            $raw = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8
-            if (-not [string]::IsNullOrWhiteSpace($raw)) {
-                $obj = $raw | ConvertFrom-Json
-                foreach ($p in $obj.PSObject.Properties) {
-                    $v = $p.Value
-                    $s = $null
-                    if ($v -is [System.Collections.IDictionary]) { $s = $v['status'] } else { $s = $v.status }
-                    if ($s) { $statuses[$p.Name] = $s }
+    foreach ($dir in $PlanDirs) {
+        foreach ($plan in (Get-ChildItem -LiteralPath $dir -Filter 'PLAN-*.md' -File -ErrorAction SilentlyContinue)) {
+            $statePath = [IO.Path]::ChangeExtension($plan.FullName, '.state.json')
+            $statuses = @{}
+            if (Test-Path -LiteralPath $statePath) {
+                $raw = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    try {
+                        $obj = $raw | ConvertFrom-Json
+                        foreach ($p in $obj.PSObject.Properties) {
+                            $v = $p.Value
+                            $s = $null
+                            if ($v -is [System.Collections.IDictionary]) { $s = $v['status'] } else { $s = $v.status }
+                            if ($s) { $statuses[$p.Name] = $s }
+                        }
+                    } catch { }
                 }
             }
-        }
-        $values = @($statuses.Values)
-        $closed = ($statuses.Count -gt 0) -and (@($values | Where-Object { $_ -notin @('done', 'abandoned') }).Count -eq 0)
-        $age = ((Get-Date) - $plan.LastWriteTime).Days
-        $rows += [pscustomobject]@{
-            Plan     = $plan.FullName
-            State    = $statePath
-            Repo     = (Split-Path (Split-Path (Split-Path $plan.FullName -Parent) -Parent) -Parent | Split-Path -Leaf)
-            Nodes    = $statuses.Count
-            Closed   = $closed
-            AgeDays  = $age
-            Archivable = ($closed -and $age -ge $Days)
+            $values = @($statuses.Values)
+            $closed = ($statuses.Count -gt 0) -and (@($values | Where-Object { $_ -notin @('done', 'abandoned') }).Count -eq 0)
+            $age = ((Get-Date) - $plan.LastWriteTime).Days
+            $repoDir = Split-Path (Split-Path $dir -Parent) -Parent
+            $repo = Split-Path $repoDir -Leaf
+            $isWorktree = Test-Path -LiteralPath (Join-Path $repoDir '.git') -PathType Leaf
+            $rows += [pscustomobject]@{
+                Plan       = $plan.FullName
+                State      = $statePath
+                Repo       = $repo
+                Worktree   = $isWorktree
+                Nodes      = $statuses.Count
+                Closed     = $closed
+                AgeDays    = $age
+                Archivable = ($closed -and $age -ge $Days -and -not $isWorktree)
+            }
         }
     }
     return @($rows)
 }
 
+$planDirs = @(Find-PlanDirs $searchRoots)
 $stats = Get-LedgerStats $Ledger
-$plans = @(Get-PlanBacklog $ProjectRoot $KeepDays)
+$plans = @(Get-PlanBacklog $planDirs $KeepDays)
 $archivable = @($plans | Where-Object { $_.Archivable })
 
 $report = [pscustomobject]@{
     ok         = $true
     dryRun     = (-not $Apply)
     cutoff     = $cutoff.ToString('yyyy-MM-dd')
+    roots      = @($searchRoots)
     ledger     = [pscustomobject]@{
         path      = $Ledger
         exists    = $stats.Exists

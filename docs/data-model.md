@@ -43,9 +43,12 @@
 **LEDGER 事件**（每行一条）
 
 ```json
-{ "ts": "...", "event": "claim|start|review|close|release|handoff",
-  "issue": "<id>", "task": "<T1>", "owner": "<harness>", "from": "<harness>", "repo": "<repo-name>" }
+{ "ts": "...", "event": "claim|start|review|close|block|abandon|release|handoff|state",
+  "issue": "<id>", "task": "<T1>", "owner": "<harness>", "subagent": "<worker-label>",
+  "wave": "<wave>", "plan": "<plan-path>", "repo": "<repo-name>", "forced": false }
 ```
+
+`start` 必须带 `subagent`；`close` 记录 `subagentMissing`。执行证据缺少带 `-Subagent` 的 `start` 时，`audit` 报 `subagent-missing`。
 
 ---
 
@@ -128,3 +131,24 @@ snapshot ──读──▶ PLAN + STATE + LEDGER + WORKTREE（一次拿全）
 wt prune ──写──▶ WORKTREE（回收）
 gc ──写──▶ LEDGER（压缩）+ PLAN/STATE（归档）
 ```
+
+## subagent policy（append-only，PFX 签名）
+
+Policy lives in the ledger as `{"event":"policy","since":"<ts>","source":"track-start|audit-init|audit-override|env-override","authorizedBy":"<who>","sig":{"alg":"RS256","thumbprint":"<sha1>","cert":"<base64 der>","value":"<base64 sig>"}}`. The signature covers `policy|ts|since|source|authorizedBy|note`. `subagent-policy.json` is only a cache; the ledger event is authoritative.
+
+- `track start -Plan -Subagent` auto-initializes a policy only when a PFX signing key is available (`-PfxPath/-PfxPassword` or `AGENTOS_POLICY_PFX` / `AGENTOS_POLICY_PFX_PASSWORD`); it never writes an unsigned policy.
+- `audit -InitPolicy -PfxPath <pfx> -PfxPassword <pwd> -AuthorizedBy <who> [-SubagentSince <ts>]` is the explicit initialization/waiver interface; future timestamps and missing keys are rejected.
+- `audit -SubagentSince` / `AGENTOS_SUBAGENT_SINCE` require authorization and a signing key; they append a signed override event.
+- Every policy event must be signed and chain to the first event's certificate thumbprint. Unsigned / tampered / different-key events => `policy-invalid` (error), and cannot waive `subagent-missing`.
+- No policy => `policy-missing` error and no waiver. Pre-cutoff gaps are visible `subagent-legacy` warnings (`subagentWaived`); post-cutoff gaps are `subagent-missing` errors. `-SkipReclaim` is test/batch-only; destructive `-Apply`/`-Reap` is never automatic.
+- **TOFU（信任锚）**：首个 policy 事件的证书 thumbprint 即整条链的信任锚。生产 / 共享 ledger 必须由 Master 先用生产 PFX 执行 `audit -InitPolicy -PfxPath <生产pfx> -PfxPassword <pwd> -AuthorizedBy <master>`，不要让普通 `track start` 自动签名产生首个 key。
+
+## session events（append-only，统一 ledger）
+
+`aos session register|heartbeat|close` appends:
+
+```json
+{"event":"session-register|session-heartbeat|session-close","session":"s-...","role":"master|sub-master|worker","issue":"<id>","task":"<T1>","host":"<machine>","ts":"..."}
+```
+
+Register requires the issue/task to be an open (`running`/`review`) tracked task. Sessions have no separate state file; `bin/ledger.ps1` excludes `session-*` from task parsing and `gc` never compacts them. `snapshot` exposes open sessions.

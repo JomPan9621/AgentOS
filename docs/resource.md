@@ -14,23 +14,23 @@ aos wt prune -Repo <repo>                             # 收工盘点
 
 - 槽位上限：`-Limit`（默认 5）
 - 只统计 AgentOS 管理的 `task/*` 分支；历史遗留单独报告，不阻塞调度
-- 回收前提：路径在 project 根下、非主工作区、全部干净、已合入目标 ref
+- 回收前提：路径在允许根下、非主工作区、全部干净、已合入目标 ref
 
 ## 远端：机器租约
 
-一台机器同一时刻只租给一个任务（单机单任务互斥）。
+一台机器可挂多个不重叠的 GPU 子租约（v2）；v1 整机租约仍兼容。
 
 ```powershell
-aos room list                          # 清单 + 租约
-aos room check <host>                    # SSH 连通性
-aos room acquire <host> -Task <issue>    # 占用
-aos room release <host> -Task <issue>    # 释放
+aos room list                                              # 清单 + 租约
+aos room check <host>                                      # SSH 连通性
+aos room acquire <host> -Task <task> -Issue <issue> -Gpus <n|all>
+aos room release <host> -Task <task> -Issue <issue>
 ```
 
 - 清单：`data/agentos/hosts.json`（真实值，永不入 git）
 - 租约：`devops/agentos/leases/*.json`（生成物，永不入 git）
-- 冲突：已有他人租约时 acquire 被拒，只报告不接管
-- 释放不匹配：租约持有者与 `-Task` 不一致时拒绝
+- GPU 是硬约束：不同 allocation 的 GPU id 不得重叠；缺 `-Gpus` 直接拒绝
+- 释放不匹配：`task + issue` 与租约不一致时拒绝，并列出当前持有者
 
 ## 与 PLAN 的关系
 

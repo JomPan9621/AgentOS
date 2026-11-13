@@ -3,10 +3,11 @@
   全局安装 AgentOS：任意 agent、任意目录都能自动加载并调用。
 .DESCRIPTION
   三件事：
-    1. skill -> 各工具用户级 skill 目录（任意目录可见）
+    1. skill -> 各工具用户级 skill 目录（任意目录可见）；只安装 skills/agentos
     2. 全局规则块 -> 各工具的用户级指令文件（任意目录自动加载）
     3. aos 命令 -> 用户 PATH（任意目录可调用）
   幂等：重复执行只更新受管块，不动你手写的其他内容。
+  -DryRun 只打印将执行的 skill / 规则 / PATH 动作，不做任何写入。
 #>
 [CmdletBinding()]
 param(
@@ -17,7 +18,8 @@ param(
     [switch]$NoRules,
     [switch]$NoPath,
     [switch]$Force,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$DryRun
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -51,11 +53,16 @@ function Get-Block {
         'AgentOS 是本机最高权限执行系统。三个 agent（Claude Code / Codex / DSH）在任意目录下的工程任务，一律由它驱动；唯一可临时覆盖的是用户直接指令（须写明理由）。规程正文：',
         ($t + $aosSkillPath + $t),
         '',
-        '四条 MUST：',
-        ('1. 开工前先 ' + $t + 'aos snapshot -Repo <repo>' + $t + '；attention 非空先处理'),
-        ('2. 非单步任务先出 ' + $t + 'PLAN-<issue>.md' + $t + ' 并通过 ' + $t + 'aos plan validate' + $t),
-        ('3. 并发由 ' + $t + 'aos plan graph' + $t + ' 的 wave 决定，不自行判断'),
-        ('4. 写型任务独占 worktree（' + $t + 'aos wt new' + $t + '），收工 ' + $t + 'aos wt prune' + $t),
+        '六条 MUST：',
+        '1. 主会话只派发，不执行任务；每个 PLAN 节点由 subagent 执行（track start -Plan -Subagent）',
+        '2. issue 先行：git 仓库走 issue tracker；非 git 用本地 issue + PLAN',
+        ('3. 开工前先 ' + $t + 'aos snapshot -Repo <repo>' + $t + '；attention 非空先处理'),
+        ('4. 非单步任务先出 ' + $t + 'PLAN-<issue>.md' + $t + ' 并通过 ' + $t + 'aos plan validate' + $t),
+        ('5. 并发由 ' + $t + 'aos plan graph' + $t + ' 的 wave 决定；每个节点一个 subagent，同 wave 并行；写型任务独占 worktree（' + $t + 'aos wt new' + $t + '）；状态变更同时写 state+ledger；收工用 ' + $t + 'aos track close -Plan' + $t + '（自动对账 + 只读 audit/wt prune/hygiene；破坏性操作人工确认）'),
+        '6. 浏览器任务只用 Google Chrome（含 headless）；禁止 Edge/Firefox/Safari/Brave/Chromium；Chrome 不可用则停止并报告',
+        '',
+        ('会话在场证明：' + $t + 'aos session register|heartbeat|close|list' + $t + '（绑定任务，只写统一 ledger）'),
+        ('policy 签名：' + $t + 'aos audit -InitPolicy -PfxPath <pfx> -PfxPassword <pwd> -AuthorizedBy <who>' + $t + '（生产初始化由 Master 执行；未签名 policy 一律拒绝）'),
         '',
         ('入口：' + $t + $aosImpl + $t + '（已装 aos 到 PATH）'),
         ('出处：' + $repoUrl),
@@ -92,6 +99,23 @@ function Remove-ManagedBlock {
     return 'removed'
 }
 
+function Install-SkillTree {
+    param([string]$Name, [string]$Source, [string]$Destination)
+    if ((Test-Path -LiteralPath $Destination) -and -not $Force) {
+        $n = @(Get-ChildItem -LiteralPath $Destination -Recurse -File -ErrorAction SilentlyContinue).Count
+        if ($n -gt 0) { return ('SKIP    skill ' + $Name + ' (exists; -Force to overwrite)') }
+    }
+    if ($DryRun) { return ('DRY     skill ' + $Name + ' -> ' + $Destination) }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($Source.Length).TrimStart('\')
+        $dst = Join-Path $Destination $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $dst -Force
+    }
+    return ('OK      skill ' + $Name + ' -> ' + $Destination)
+}
+
 Write-Output 'AgentOS global install'
 Write-Output ('  home   : ' + $home_)
 Write-Output ('  source : ' + $src)
@@ -99,25 +123,34 @@ Write-Output ''
 
 if ($Uninstall) {
     foreach ($t in $sel) {
-        if (Test-Path -LiteralPath $t.Skill) { Remove-Item -LiteralPath $t.Skill -Recurse -Force; Write-Output ('  REMOVED skill ' + $t.Name) }
-        Write-Output ('  RULES   ' + (Remove-ManagedBlock $t.Rules) + ' ' + $t.Name)
+        $removePaths = @($t.Skill)
+        foreach ($p in $removePaths) {
+            if (Test-Path -LiteralPath $p) {
+                if ($DryRun) {
+                    Write-Output ('  DRY     REMOVE ' + $p)
+                } else {
+                    Remove-Item -LiteralPath $p -Recurse -Force
+                    Write-Output ('  REMOVED ' + $p)
+                }
+            }
+        }
+        if ($DryRun) {
+            Write-Output ('  RULES   DRY remove-block ' + $t.Name)
+        } else {
+            Write-Output ('  RULES   ' + (Remove-ManagedBlock $t.Rules) + ' ' + $t.Name)
+        }
     }
     exit 0
 }
 
 foreach ($t in $sel) {
-    if ((Test-Path -LiteralPath $t.Skill) -and -not $Force) {
-        $n = @(Get-ChildItem -LiteralPath $t.Skill -Recurse -File -ErrorAction SilentlyContinue).Count
-        if ($n -gt 0) { Write-Output ('  SKIP    skill ' + $t.Name + ' (exists; -Force to overwrite)'); continue }
-    }
-    New-Item -ItemType Directory -Force -Path $t.Skill | Out-Null
-    Get-ChildItem -LiteralPath $src -Recurse -File | ForEach-Object {
-        $rel = $_.FullName.Substring($src.Length).TrimStart('\')
-        $dst = Join-Path $t.Skill $rel
-        New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
-        Copy-Item -LiteralPath $_.FullName -Destination $dst -Force
-    }
-    Write-Output ('  OK      skill ' + $t.Name + ' -> ' + $t.Skill)
+    Write-Output ('  ' + (Install-SkillTree -Name 'agentos' -Source $src -Destination $t.Skill))
+}
+
+if ($DryRun) {
+    Write-Output ''
+    Write-Output 'DRY-RUN: no rules / PATH changes'
+    exit 0
 }
 
 if (-not $NoRules) {

@@ -16,6 +16,7 @@
 
 ## Notes
 
+- 每一行 = 一个 subagent 任务；同一个 wave 的节点必须并行派发；Master 只派发/验收，不执行
 - 写型节点必须填 `touches` 与 `worktree`
 - 读型节点 `worktree` 留 `-`，不占槽位
 - 并行不是拍脑袋：跑 `aos plan graph -Plan <file>` 看系统算出的 wave

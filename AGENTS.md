@@ -12,21 +12,21 @@ AgentOS 是 **本机最高权限的执行系统**，以 skill 形式分发给所
 
 配套脚本（`bin/aos.ps1`）是给规程用的工具，不是强制层——agent 可以选择不用，那就是违规，不是被拦截。
 
-优先级链见 `docs/priority.md`：**AgentOS（系统层）** > 用户直接指令（唯一可临时覆盖） > 根据地三条铁律 > 本规程 > agent 默认习惯。
+优先级链见 `docs/priority.md`：**用户直接指令（唯一可临时覆盖）** > 仓库最高优先级规则 > **本规程（AgentOS）** > agent 默认习惯。
 
 它只包含**功能**（脚本 / 模板 / skill / 文档），不含任何数据、主机名、密钥。
 
-**交付的是方法，不是环境**：根据地根由 `AGENTOS_HOME` 或本仓位置推导，仓库路径由 `-Repo` 传入，GitLab 主机由 `AGENTOS_GITLAB_HOSTS` 提供。放到任何机器、任何路径都能自适配。
+**交付的是方法，不是环境**：homebase 由 `AGENTOS_HOME` 或本仓位置推导，仓库路径由 `-Repo` 传入，GitLab 主机由 `AGENTOS_GITLAB_HOSTS` 提供。放到任何机器、任何路径都能自适配。
 
 ## 第一原则：与业务数据解耦
 
 **AgentOS 是基础 infra，不是业务系统。仓库内零业务数据。**
 
-- **不允许出现**：任何项目名、仓名、issue 号、设备型号、硬件架构、公司产品名、业务路径（如 `<homebase>\project\<某仓>`）。
+- **不允许出现**：任何项目名、仓名、issue 号、设备型号、硬件架构、公司产品名、业务路径（如 `<workspace>\project\<某仓>`）。
 - **只允许出现**：契约形状（字段名、类型、枚举）、占位符（`<repo>` `<issue>` `<slug>` `<device>`）、本仓库自身的远端地址。
 - 业务数据由业务仓通过 `.agentos/` 目录**自带**；AgentOS 只读取契约，不拥有内容。
 - 脚本里**禁止硬编码业务默认值**；需要路径时由调用方传 `-Repo`，或取当前工作目录。
-- 环境相关值（如自建 GitLab 主机）走环境变量（`AGENTOS_GITLAB_HOSTS`），不写死。
+- 环境相关值（如 GitLab 主机）走环境变量（`AGENTOS_GITLAB_HOSTS`），不写死。
 
 判据：`aos doctor` 通过 + 用业务关键词扫描仓库应为零命中。
 
@@ -42,25 +42,44 @@ AgentOS 是 **本机最高权限的执行系统**，以 skill 形式分发给所
 
 细则：`docs/ai-native.md`；输出契约：`docs/output-contract.md`
 
-## 三条硬规则
+## 派发模型（强制）
 
-1. **计划先行**：任何非单步任务必须先产出 `PLAN-<issue>.md`，不得边想边干。
-2. **并发由 DAG 决定**：并行不是人拍的，是从 `deps` / `touches` / `resource` 三个字段算出来的。**AgentOS 给边界（哪些能并行），harness 给实现（用 Agent Teams / subagent / 自研机制跑到极致）**。
-3. **写型任务必须独占 worktree**，由 Master 派发前创建、验收后回收；Worker 不得自建 worktree。
+**AgentOS 的默认执行单位是 subagent，不是主会话。**
+
+- **Master（主会话）**：只负责与用户交互、`aos snapshot`、PLAN、`plan graph`、派发、`track review/close` 和只读验收。**不执行任务**：不写代码、不改文件、不跑长命令、不占 GPU、不做远端操作。
+- **Worker（subagent）**：每个 PLAN 节点派发一个 subagent；只改该节点的 `touches`，按 `accept` 交证据。
+- **Sub-Master（subagent 编排者）**：可递归拆一层，递归深度 ≤ 3；必须同步等待其子代理返回，禁止 fire-and-forget。
+- **同一个 wave 的所有节点必须并行派发**；串行执行可并行任务 = 违规。
+- 例外：Master 可做 snapshot/plan/graph/track/review/close、只读验收和单步只读问答；任何执行型工作交给 subagent。
+- **可追踪**：PLAN 节点执行必须落 `track start -Plan -Subagent`；`plan state` 不是执行通道，`audit` 会报 `subagent-missing`。`track close -Plan` 自动对账 state/ledger 并跑只读 audit / `wt prune` / hygiene。
+- **会话在场**：`aos session register|heartbeat|close|list` 必须绑定已 start 的任务；session 事件只写统一 ledger。
+- **policy 必须签名**：policy 事件用 PFX 私钥签名并链式固定 thumbprint；未签名 / 钥匙不匹配 / 签名被篡改一律拒绝。生产初始化由 Master 执行 `audit -InitPolicy -PfxPath ... -PfxPassword ...`。
+- 没有 issue + PLAN 不得派发；派发必须带目标、边界、输入、验收和证据回传格式。
+
+## 硬规则
+
+1. **主会话只派发，不执行任务**：Master 只与用户交互、规划、派发、验收；所有执行型工作由 subagent 完成。
+2. **Issue 先行**：git 仓库必须走 GitHub/GitLab issue；非 git 任务必须先在 `.agentos/issues/` 建本地 `ISSUE-<id>.md`，再建 PLAN；没有 issue/PLAN 不得派发。
+3. **计划先行**：任何非单步任务必须先产出 `PLAN-<issue>.md`，不得边想边干。
+4. **并发由 DAG 决定**：并行不是人拍的，是从 `deps` / `touches` / `resource` 三个字段算出来的；**一个 wave = 一批 subagent，必须并行派发**；串行执行可并行任务 = 违规。
+5. **写型任务必须独占 worktree**，由 Master 派发前创建、验收后回收；Worker 不得自建 worktree。
+6. **浏览器只用 Chrome**：需要浏览器的任务只允许 Google Chrome（含 headless Chrome）；禁止 Edge、Firefox、Safari、Brave、Chromium 及其他浏览器；Chrome 不可用则停止并报告。
 
 ## Issue 源
 
-| 仓库类型 | 判定 | Issue 来源 |
+| 仓库类型 | 判定 | Issue 来源（强制） |
 |---|---|---|
 | GitHub | remote 含 `github.com` | **必须**走 GitHub issue（`gh` CLI 或 API） |
-| GitLab | remote 含 `gitlab`，或命中 `AGENTOS_GITLAB_HOSTS` 环境变量 | GitLab issue API |
-| 其他 / 无远端 | 兜底 | 本地 `.agentos/issues/ISSUE-<id>.md` |
+| GitLab | remote 含 `gitlab`，或命中 `AGENTOS_GITLAB_HOSTS` 环境变量 | **必须**走 GitLab issue API |
+| 非 git / 无远端 | 兜底 | **必须**先建本地 `.agentos/issues/ISSUE-<id>.md`，再建 PLAN；DAG 能力与 git 任务一致 |
+
+git 仓库不允许用本地 issue 代替 issue tracker；非 git 任务不允许没有 issue/PLAN 直接派发。
 
 ## 角色
 
-Master（人操作的窗口）/ Sub-Master（可递归）/ Worker。**角色不是工具**：Claude、Codex、DSH 都可任任一角色；唯一约束是**只有 Master 能派发**。
+**Master（主会话）** 只与用户交互、规划、派发、验收，自己不动手；**Sub-Master（subagent 编排者）** 可递归拆一层；**Worker（subagent 执行者）** 执行单个 PLAN 节点。Claude、Codex、DSH 都可任任一角色；唯一约束是**只有 Master 能派发，Worker 必须是 subagent**。
 
-递归深度 ≤ 3；Sub-Master 必须同步等待其子代理，禁止 fire-and-forget。
+递归深度 ≤ 3；Sub-Master 必须同步等待其子代理，禁止 fire-and-forget。所有执行型工作由 subagent 完成，Master 不直接执行。
 
 **隔离原则（最高优先）**：harness 正在执行的任务是各自私域，默认**互不可干扰**——不改对方文件、不抢对方任务、不碰对方进程；超时也只报告不接管。跨 harness 操作必须由用户明确授权（`track claim/handoff -AuthorizedBy`）。
 
@@ -68,16 +87,16 @@ Master（人操作的窗口）/ Sub-Master（可递归）/ Worker。**角色不�
 
 ## 目录
 
-- `bin/` — 可执行脚本（`aos.ps1` 是统一入口）
+- `bin/` — 可执行脚本（`aos.ps1` 是统一入口；`ledger.ps1` 是任务/policy/session 唯一台账模型）
 - `schema/` — 数据结构定义
 - `templates/` — PLAN / 规则片段模板
-- `docs/` — 生命周期、并发、角色、适配器说明
+- `docs/` — 生命周期、并发、角色、适配器、资源模型、生成物
 - `skills/` — 供三工具安装的 skill 包
-- `tests/` — 自检套件（`selftest.ps1`，44 用例）
+- `tests/` — 自检套件（`selftest.ps1` 与 `artifact.tests.ps1`）
 
 ## 开发
 
 - 平台：Windows / PowerShell 5.1+（宿主默认 5.1，禁用 PS7-only 特性如 `-AsHashtable`）
 - **所有 `.ps1` 必须存为 UTF-8 with BOM**——PS5.1 对无 BOM 文件按 GBK 解码，中文会变乱码并导致语法错误
 - 改动脚本后必须跑 `bin/aos.ps1 doctor`
-- 任何脚本改动后必须跑 `tests/selftest.ps1`，44 个用例全绿才允许提交
+- 任何脚本改动后必须跑 `tests/selftest.ps1` 与 `tests/artifact.tests.ps1`，全部用例通过才允许提交（当前基线：selftest 202/202、artifact 24/24）

@@ -13,32 +13,45 @@ planned ──派发──▸ running ──交付──▸ review ──验收�
 |---|---|---|
 | `planned` | 已进 PLAN，尚未派发 | 初始态 |
 | `ready` | 依赖已满足，可派发 | `aos plan next` 算出来 |
-| `running` | 已派发给某个 worker | `aos track start -Task T1 -Owner codex` |
+| `running` | 已派发给某个 worker | `aos track start -Task T1 -Owner codex -Plan <file> -Subagent <label>` |
 | `review` | worker 交付，等待验收 | `aos track review -Task T1` |
-| `done` | 验收通过 | `aos track close -Task T1` |
-| `blocked` | 外部阻塞 | `aos plan state -Task T1 -Status blocked` |
-| `abandoned` | 放弃 | `aos plan state -Task T1 -Status abandoned` |
+| `done` | 验收通过 | `aos track close -Task T1 -Plan <file>`（自动对账） |
+| `blocked` | 外部阻塞 | `aos track block -Task T1 -Reason "..."` |
+| `abandoned` | 放弃 | `aos track abandon -Task T1 -Reason "..."` |
+
+## 派发
+
+Master 只派发不执行：每个 PLAN 节点由一个 subagent 执行；同一 wave 的节点并行派发。派发前必须有 issue + PLAN；`track start -Plan` 必须带 `-Subagent`，且不能与 owner 同名。subagent 返回证据后 Master `review`/`close`，结论写入 PLAN 的 `## Notes`。
+
+`audit` 会检查 subagent 归属：有执行证据（start/review/close，或 `plan state` 写成 running/done）但 ledger 没有带 `-Subagent` 的 start，报 `subagent-missing`。`plan state` 是状态修正通道，不是执行通道。
 
 ## 两处记录
 
-1. **PLAN 节点状态**：`<repo>/.agentos/plans/PLAN-<issue>.state.json` —— 单一事实源，供 `plan next` 计算
-2. **全局台账**：`<homebase>\devops\agentos\ledger.jsonl` —— 追加式审计流水，`aos track list` 可查
+1. **PLAN 节点状态**：`<repo>/.agentos/plans/PLAN-<issue>.state.json` —— 供 `plan next` 计算
+2. **全局台账**：`<homebase>\devops\agentos\ledger.jsonl` —— 追加式审计流水，`track` / `audit` 的权威来源
 
-## 与 tasktrack 的分工
+`track close -Plan` 自动对账两者：ledger 终态回写 state；没有 ledger 证据的 stale `running`/`review` 清回 `planned`，不再需要手工 `-Force`。依赖判定也以 ledger 终态优先，旧 state 不会卡住 DAG。
 
-| 工具 | 管什么 | 用于 |
-|---|---|---|
-| `aos track` | **任务节点**的生命周期 | PLAN 里的 T1/T2 派发与验收 |
-| `repo/devops/tasktrack` | **进程级长任务**防丢失 | Codex 后台任务、长命令、跨会话作业 |
+## 与进程级长任务的分工
 
-两个都要用：`track` 记"这个节点在谁手上"，`tasktrack` 记"这个后台进程别被回收后失联"。
+`aos track` 只负责 PLAN 里的**任务节点**生命周期。若 harness 另有进程级长任务登记工具，应由该工具自行管理；本仓不随附、也不假设其存在。
 
 ## 回收闭环
 
-`done` 之后必须做两件事，否则生命周期没走完：
+`track close -Plan` 自带只读收工检查（`reclaim`）：
 
-1. `aos wt prune` —— 回收该节点的 worktree 槽位
-2. 在 PLAN 的 `## Notes` 里记一句验收结论
+| 检查 | 内容 | 边界 |
+|---|---|---|
+| `audit` | PLAN / state / ledger、subagent 归属 | 有 error 先清账 |
+| `worktrees` | `wt prune` 盘点 safe candidates / dirty | 只读，不自动 `-Apply` |
+| `hygiene` | harness helper 进程泄漏 | 只读，不自动 `-Reap` |
+
+收工后：
+
+1. 读 `reclaim`；audit `errors>0` 先清账，`-Backfill` 只修可证明的缺口
+2. `worktrees.paths` 里的安全候选才可手动 `aos wt prune -Apply`；dirty worktree 一律保留
+3. `hygiene.attention` 非空先报告；`-Reap` 需确认
+4. 在 PLAN 的 `## Notes` 里记验收结论
 
 ---
 
@@ -106,5 +119,13 @@ aos track handoff -Issue 308 -Task T4 -From codex -Owner claude
 | 持有者未超时 | claim 被拒，须 `-Force` + `-Reason` |
 | 本人持有 | 幂等，no-op |
 
-**事件类型**：`start` / `review` / `close` / `claim` / `release` / `handoff`。
-每条事件都带 `repo` 字段，所以跨仓也能定位。
+**事件类型**：任务 `start` / `review` / `close` / `block` / `abandon` / `claim` / `release` / `handoff` / `state`；policy `policy`（PFX 签名）；会话 `session-register` / `session-heartbeat` / `session-close`。
+每条任务事件都带 `repo` 字段，所以跨仓也能定位。session 事件通过 `issue+task` 绑定任务，但不参与任务状态机。
+
+## session（在场证明）
+
+`aos session register -Issue <n> -Task <T> -Role worker -Host <machine>` 要求该任务已在 ledger 中 `running`/`review`；`heartbeat` / `close` 按 session id 操作。session 只是"谁在哪个 host 上执行这个任务"，不替代 `track`，也不自动销账任务。session 事件只写统一 ledger，`gc` 永不压缩。
+
+## subagent policy
+
+见 [data-model.md](data-model.md) 的 subagent policy（append-only）权威段。
