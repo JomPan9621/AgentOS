@@ -31,13 +31,31 @@ function Get-Sig {
     return $Cmd.Substring(0, [Math]::Min(60, $Cmd.Length))
 }
 
-$rawProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
 $targets = @()
-foreach ($rp in $rawProcs) {
-    if ($rp.Name -ne 'node.exe' -and $rp.Name -ne 'python.exe') { continue }
-    $targets += [pscustomobject]@{
-        Pid = [int]$rp.ProcessId
-        Sig = (Get-Sig ([string]$rp.CommandLine))
+if ($env:OS -eq 'Windows_NT') {
+    # --- Windows：原逻辑（WMI/CIM）逐字节保留 ---
+    $rawProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    foreach ($rp in $rawProcs) {
+        if ($rp.Name -ne 'node.exe' -and $rp.Name -ne 'python.exe') { continue }
+        $targets += [pscustomobject]@{
+            Pid = [int]$rp.ProcessId
+            Sig = (Get-Sig ([string]$rp.CommandLine))
+        }
+    }
+} else {
+    # --- Linux / macOS：用 ps 枚举 node / python 进程 ---
+    $psOut = @(& ps -eo pid=,comm=,args= 2>$null)
+    foreach ($line in $psOut) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $m = [regex]::Match($line, '^\s*(?<pid>\d+)\s+(?<comm>\S+)\s*(?<args>.*)$')
+        if (-not $m.Success) { continue }
+        $comm = $m.Groups['comm'].Value
+        $base = [IO.Path]::GetFileName($comm)
+        if ($base -ne 'node' -and $base -ne 'python' -and $base -ne 'python3') { continue }
+        $targets += [pscustomobject]@{
+            Pid = [int]$m.Groups['pid'].Value
+            Sig = (Get-Sig ([string]$m.Groups['args'].Value))
+        }
     }
 }
 
@@ -79,19 +97,44 @@ $leakMem = 0
 if ($leakedGroups.Count -gt 0) { $leakMem = [int](($leakedGroups | Measure-Object -Property mem_mb -Sum).Sum) }
 
 $cpuPct = 0
-try {
-    $c = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue
-    if ($c) { $cpuPct = [int](($c | Measure-Object -Property LoadPercentage -Average).Average) }
-} catch { $cpuPct = 0 }
-
 $memUsedGb = 0; $memTotalGb = 0
-try {
-    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-    if ($os) {
-        $memTotalGb = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-        $memUsedGb = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
-    }
-} catch { }
+if ($env:OS -eq 'Windows_NT') {
+    # --- Windows：原逻辑（CIM）逐字节保留 ---
+    try {
+        $c = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue
+        if ($c) { $cpuPct = [int](($c | Measure-Object -Property LoadPercentage -Average).Average) }
+    } catch { $cpuPct = 0 }
+
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if ($os) {
+            $memTotalGb = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+            $memUsedGb = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
+        }
+    } catch { }
+} else {
+    # --- Linux / macOS：从 /proc 或 ps/vm_stat 读取，读不到则保持 0（仅感知，不阻断）---
+    try {
+        $load = @(& cat /proc/loadavg 2>$null)
+        if ($load -and $load[0]) {
+            $oneMin = [double](($load[0] -split '\s+')[0])
+            $ncpu = [int](@(& nproc 2>$null)[0])
+            if ($ncpu -gt 0) { $cpuPct = [int][math]::Min(100, [math]::Round(($oneMin / $ncpu) * 100)) }
+        }
+    } catch { }
+    try {
+        $meminfo = @(& cat /proc/meminfo 2>$null)
+        $totalKb = 0; $availKb = 0
+        foreach ($ln in $meminfo) {
+            if ($ln -match '^MemTotal:\s+(\d+)') { $totalKb = [double]$Matches[1] }
+            elseif ($ln -match '^MemAvailable:\s+(\d+)') { $availKb = [double]$Matches[1] }
+        }
+        if ($totalKb -gt 0) {
+            $memTotalGb = [math]::Round($totalKb / 1MB, 1)
+            $memUsedGb = [math]::Round(($totalKb - $availKb) / 1MB, 1)
+        }
+    } catch { }
+}
 
 $reaped = @()
 if ($Reap -and $leakedGroups.Count -gt 0) {

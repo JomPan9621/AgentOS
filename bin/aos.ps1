@@ -165,15 +165,21 @@ function Invoke-Doctor {
         $rows.Add([pscustomobject]@{ Group = 'rules'; Item = $a.Name; Ok = $rulesOk; Detail = $rulesDetail })
     }
 
+    # 平台判定用目录分隔符（纯 .NET，PS 5.1 安全），不引用 $IsWindows。
+    $isWindowsHost = ([IO.Path]::DirectorySeparatorChar -eq [char]'\')
     $binDir = Join-Path $home_ '.agentos\bin'
-    $shim = Join-Path $binDir 'aos.cmd'
+    $shim = Join-Path $binDir $(if ($isWindowsHost) { 'aos.cmd' } else { 'aos' })
     $shimOk = Test-Path -LiteralPath $shim
     $shimDetail = if ($shimOk) { $shim } else { 'missing' }
     $rows.Add([pscustomobject]@{ Group = 'path'; Item = 'shim'; Ok = $shimOk; Detail = $shimDetail })
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $onPath = $false
-    if ($userPath) { $onPath = (($userPath -split ';') -contains $binDir) }
+    if ($isWindowsHost) {
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ($userPath) { $onPath = (($userPath -split ';') -contains $binDir) }
+    } else {
+        if ($env:PATH) { $onPath = (($env:PATH -split ':') -contains $binDir) }
+    }
     $pathDetail = if ($onPath) { 'present' } else { 'absent' }
     $rows.Add([pscustomobject]@{ Group = 'path'; Item = 'user PATH'; Ok = $onPath; Detail = $pathDetail })
 

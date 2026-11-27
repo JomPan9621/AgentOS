@@ -97,7 +97,7 @@ try {
                 $target = Join-Path $target $seg
             }
             $target = [IO.Path]::GetFullPath($target)
-            $prefix = $artifactRoot.TrimEnd('\') + '\'
+            $prefix = $artifactRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
             if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
                 throw 'resolved path escapes the artifact root'
             }

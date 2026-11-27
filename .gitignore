@@ -20,3 +20,6 @@ __pycache__/
 # 编辑器
 .vscode/
 .idea/
+
+# 测试沙箱产物（UNС 工作目录下 GetTempPath 可能落到仓库内）
+tmp/agentos-tasktrack-tests-*/

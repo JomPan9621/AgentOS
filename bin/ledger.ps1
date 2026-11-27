@@ -17,6 +17,10 @@ function Get-LedgerField {
     if ($null -eq $Obj) { return '' }
     $p = $Obj.PSObject.Properties[$Name]
     if ($null -eq $p -or $null -eq $p.Value) { return '' }
+    # PS7 (Windows/Linux) 的 ConvertFrom-Json 会把 ISO8601 时间字符串自动转成 [datetime]；
+    # PS5.1 不转。直接 [string] 强转会得到区域格式（如 "11/27/2026 13:24:36"），
+    # 破坏 'yyyy-MM-ddTHH:mm:ss' 的解析与比较。这里统一归一化回 ISO 字符串。
+    if ($p.Value -is [datetime]) { return $p.Value.ToString('yyyy-MM-ddTHH:mm:ss') }
     return [string]$p.Value
 }
 
