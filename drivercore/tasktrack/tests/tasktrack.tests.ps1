@@ -18,7 +18,27 @@ param()
 
 $ErrorActionPreference = "Stop"
 $script:tasktrack = (Resolve-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "tasktrack.ps1")).Path
-$script:root = Join-Path ([IO.Path]::GetTempPath()) ("agentos-tasktrack-tests-" + [guid]::NewGuid().ToString("N"))
+# 沙箱根必须远离仓库：Windows 进程在 UNC 工作目录（如 \\wsl.localhost\...）下运行时，
+# [IO.Path]::GetTempPath() 会返回 "<UNC 当前目录>\tmp\"，使测试产物落进仓库。
+# 因此优先用显式临时目录（TEMP/TMP），并校验结果不在仓库内，否则回退系统临时目录。
+function Get-SafeTempRoot {
+    param([string]$RepoRoot)
+    $candidates = @()
+    if ($env:TEMP) { $candidates += $env:TEMP }
+    if ($env:TMP) { $candidates += $env:TMP }
+    $candidates += [IO.Path]::GetTempPath()
+    if ($env:OS -ne 'Windows_NT') { $candidates += '/tmp' }
+    foreach ($c in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($c)) { continue }
+        $full = try { [IO.Path]::GetFullPath($c) } catch { continue }
+        if (-not (Test-Path -LiteralPath $full)) { continue }
+        if ($full.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        return $full
+    }
+    return [IO.Path]::GetTempPath()
+}
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$script:root = Join-Path (Get-SafeTempRoot -RepoRoot $repoRoot) ("agentos-tasktrack-tests-" + [guid]::NewGuid().ToString("N"))
 $script:passed = 0
 $script:failed = 0
 
