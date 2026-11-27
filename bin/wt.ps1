@@ -52,7 +52,9 @@ function Invoke-Git {
 
 function Test-UnderPath {
     param([string]$Path, [string]$Root)
-    return $Path.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+    # 平台分隔符：Windows '\'，Linux/macOS '/'；否则子目录判定在 Unix 上恒为 false。
+    $sep = [IO.Path]::DirectorySeparatorChar
+    return $Path.StartsWith($Root.TrimEnd($sep) + $sep, [StringComparison]::OrdinalIgnoreCase)
 }
 
 function Get-WorktreeEntries {
@@ -161,8 +163,23 @@ switch ($Command) {
         if (Test-Path -LiteralPath $path) { throw "path exists: $path" }
         $exists = (Invoke-Git $RepoRoot @('show-ref', '--verify', '--quiet', "refs/heads/$branch") -AllowFailure).Code -eq 0
         if ($exists) { throw "branch exists: $branch" }
-        $r = Invoke-Git $RepoRoot @('worktree', 'add', '-b', $branch, $path, $Base) -AllowFailure
-        if ($r.Code -ne 0) { throw ("worktree add failed: " + ($r.Lines -join '; ')) }
+        # 基线上浮：显式 -Base 优先；否则若默认 'master' 在本仓不存在，回落到仓库实际默认分支
+        # （多数新仓用 'main'）。避免硬编码 master 导致 main 仓无法开 worktree。
+        $resolvedBase = $Base
+        if ($Base -eq 'master') {
+            $hasMaster = (Invoke-Git $RepoRoot @('show-ref', '--verify', '--quiet', 'refs/heads/master') -AllowFailure).Code -eq 0
+            if (-not $hasMaster) {
+                $sym = (Invoke-Git $RepoRoot @('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD') -AllowFailure)
+                if ($sym.Code -eq 0 -and -not [string]::IsNullOrWhiteSpace($sym.Lines[0])) {
+                    $resolvedBase = ($sym.Lines[0] -split '/')[-1]
+                } elseif ((Invoke-Git $RepoRoot @('show-ref', '--verify', '--quiet', 'refs/heads/main') -AllowFailure).Code -eq 0) {
+                    $resolvedBase = 'main'
+                }
+            }
+        }
+        $r = Invoke-Git $RepoRoot @('worktree', 'add', '-b', $branch, $path, $resolvedBase) -AllowFailure
+        if ($r.Code -ne 0) { throw ("worktree add failed (base=$resolvedBase): " + ($r.Lines -join '; ')) }
+        $Base = $resolvedBase
         if ($machine) {
             [pscustomobject]@{ ok = $true; path = $path; branch = $branch; base = $Base; repo = $RepoRoot } | ConvertTo-Json -Depth 4
             return

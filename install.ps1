@@ -172,18 +172,36 @@ if (-not $NoPath) {
     $binDir = Join-Path $home_ '.agentos\bin'
     New-Item -ItemType Directory -Force -Path $binDir | Out-Null
     $shellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
-    $shim = Join-Path $binDir 'aos.cmd'
-    $shimLines = @('@echo off', ($shellExe + ' -NoProfile -ExecutionPolicy Bypass -File "' + $aosImpl + '" %*'))
-    [System.IO.File]::WriteAllText($shim, ($shimLines -join $nl), (New-Object System.Text.ASCIIEncoding))
-    Write-Output ('  OK      shim  -> ' + $shim + ' (' + $shellExe + ')')
+    # 平台判定：目录分隔符是纯 .NET 调用，PS 5.1 / PS7-Windows / PS7-Linux 均可用，
+    # 不引用 $IsWindows（PS 5.1 下未定义，Set-StrictMode 会报错）。
+    $isWindowsHost = ([IO.Path]::DirectorySeparatorChar -eq [char]'\')
+    if ($isWindowsHost) {
+        # --- Windows：原逻辑逐字节保留 ---
+        $shim = Join-Path $binDir 'aos.cmd'
+        $shimLines = @('@echo off', ($shellExe + ' -NoProfile -ExecutionPolicy Bypass -File "' + $aosImpl + '" %*'))
+        [System.IO.File]::WriteAllText($shim, ($shimLines -join $nl), (New-Object System.Text.ASCIIEncoding))
+        Write-Output ('  OK      shim  -> ' + $shim + ' (' + $shellExe + ')')
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $parts = @($userPath -split ';' | Where-Object { $_ -and $_.Trim() })
-    if ($parts -notcontains $binDir) {
-        [Environment]::SetEnvironmentVariable('Path', (($parts + $binDir) -join ';'), 'User')
-        Write-Output ('  OK      PATH  -> appended ' + $binDir + ' (new shells only)')
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $parts = @($userPath -split ';' | Where-Object { $_ -and $_.Trim() })
+        if ($parts -notcontains $binDir) {
+            [Environment]::SetEnvironmentVariable('Path', (($parts + $binDir) -join ';'), 'User')
+            Write-Output ('  OK      PATH  -> appended ' + $binDir + ' (new shells only)')
+        } else {
+            Write-Output ('  SKIP    PATH  -> already present')
+        }
     } else {
-        Write-Output ('  SKIP    PATH  -> already present')
+        # --- Linux / macOS：生成 POSIX shim；PATH 由 shell profile 管理，不写死 ---
+        $shim = Join-Path $binDir 'aos'
+        $shimLines = @('#!/usr/bin/env bash', ('exec "' + $shellExe + '" -NoProfile -File "' + $aosImpl + '" "$@"'))
+        [System.IO.File]::WriteAllText($shim, (($shimLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+        try { & chmod +x $shim 2>$null } catch { }
+        Write-Output ('  OK      shim  -> ' + $shim + ' (' + $shellExe + ')')
+        if (($env:PATH -split ':') -contains $binDir) {
+            Write-Output ('  SKIP    PATH  -> already present')
+        } else {
+            Write-Output ('  NOTE    PATH  -> add to your shell profile: export PATH="' + $binDir + ':$PATH"')
+        }
     }
 }
 

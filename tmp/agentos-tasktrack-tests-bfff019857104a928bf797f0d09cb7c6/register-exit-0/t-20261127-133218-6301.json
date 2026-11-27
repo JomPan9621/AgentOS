@@ -1,0 +1,16 @@
+﻿{
+    "id":  "t-20261127-133218-6301",
+    "kind":  "bash",
+    "name":  "wrapper-exit0",
+    "command":  "cmd /c exit 0",
+    "logFile":  "\\tmp\\agentos-tasktrack-tests-bfff019857104a928bf797f0d09cb7c6\\register-exit-0\\t-20261127-133218-6301.log",
+    "exitFile":  "\\tmp\\agentos-tasktrack-tests-bfff019857104a928bf797f0d09cb7c6\\register-exit-0\\t-20261127-133218-6301.exit",
+    "issue":  "",
+    "task":  "",
+    "host":  "DESKTOP-BEIRADT",
+    "pid":  26868,
+    "procStartTime":  "2026-11-27T13:32:18.1240025+08:00",
+    "startedAt":  "2026-11-27T13:32:18.1453035+08:00",
+    "status":  "done",
+    "note":  "watchdog: 自动完成（exit 0） @ 2026-11-27T13:32:38.8061092+08:00"
+}

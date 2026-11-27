@@ -310,7 +310,7 @@ $gitSame = ($null -ne $statusBefore) -and ($null -ne $statusAfter) -and ($status
 $noRepoDevops = -not (Test-Path -LiteralPath (Join-Path $root 'devops'))
 $underRootOk = $false
 try {
-    $rootFull = [IO.Path]::GetFullPath($artifactRoot).TrimEnd('\') + '\'
+    $rootFull = [IO.Path]::GetFullPath($artifactRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     $underRootOk = ([IO.Path]::GetFullPath($runA)).StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)
 } catch {
     $underRootOk = $false

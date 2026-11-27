@@ -1165,7 +1165,11 @@ $fixturePid = 0
 $fixtureAlive = $false
 $closeNoReapOut = ''
 try {
-    $fixture = Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 60' -PassThru -WindowStyle Hidden
+    # 平台隔离：-WindowStyle 仅 Windows 支持；可执行名 Windows 用 powershell，类 Unix 用 pwsh。
+    $fixtureExe = if ($env:OS -eq 'Windows_NT') { 'powershell' } else { 'pwsh' }
+    $startParams = @{ FilePath = $fixtureExe; ArgumentList = @('-NoProfile', '-Command', 'Start-Sleep -Seconds 60'); PassThru = $true }
+    if ($env:OS -eq 'Windows_NT') { $startParams['WindowStyle'] = 'Hidden' }
+    $fixture = Start-Process @startParams
     $fixturePid = [int]$fixture.Id
     Start-Sleep -Milliseconds 600
     $wrapper = @'

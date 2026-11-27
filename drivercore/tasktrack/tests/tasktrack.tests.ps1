@@ -88,12 +88,22 @@ function Set-JobAged {
   return $j
 }
 
+function Get-PsExe {
+  if ($env:OS -eq 'Windows_NT') { return @('powershell.exe', @('-NoProfile', '-ExecutionPolicy', 'Bypass')) }
+  return @('pwsh', @('-NoProfile'))
+}
+function Get-ExitCmd {
+  param([int]$Code)
+  if ($env:OS -eq 'Windows_NT') { return "cmd /c exit $Code" }
+  return "bash -c 'exit $Code'"
+}
+
 function Invoke-Watch {
   param([string]$StateDir)
   $old = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
-    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:tasktrack watch -StateDir $StateDir -Json 2>&1
+    $ps = Get-PsExe; $out = & $ps[0] @($ps[1]) -File $script:tasktrack watch -StateDir $StateDir -Json 2>&1
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($out | Out-String) }
   } finally { $ErrorActionPreference = $old }
 }
@@ -103,7 +113,7 @@ function Invoke-Tasktrack {
   $old = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
-    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:tasktrack @Arguments 2>&1
+    $ps = Get-PsExe; $out = & $ps[0] @($ps[1]) -File $script:tasktrack @Arguments 2>&1
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($out | Out-String) }
   } finally { $ErrorActionPreference = $old }
 }
@@ -300,7 +310,7 @@ try {
 
   # ---------- 7. register wrapper exit 0 end-to-end ----------
   $d = New-TestStateDir "register-exit-0"
-  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "wrapper-exit0", "-Command", "cmd /c exit 0")
+  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "wrapper-exit0", "-Command", (Get-ExitCmd 0))
   $id = Get-RegisteredId $r.Output
   Assert-True "register exit-0 wrapper launched" ($r.ExitCode -eq 0 -and $id) "exit=$($r.ExitCode) out=$($r.Output)"
   if ($id) {
@@ -313,7 +323,7 @@ try {
 
   # ---------- 8. register wrapper abnormal exit end-to-end -> LOST ----------
   $d = New-TestStateDir "register-exit-7"
-  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "wrapper-exit7", "-Command", "cmd /c exit 7")
+  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "wrapper-exit7", "-Command", (Get-ExitCmd 7))
   $id = Get-RegisteredId $r.Output
   Assert-True "register exit-7 wrapper launched" ($r.ExitCode -eq 0 -and $id) "exit=$($r.ExitCode) out=$($r.Output)"
   if ($id) {
@@ -359,7 +369,7 @@ try {
 
   # ---------- 11. native exit 0 followed by throw must NOT become done ----------
   $d = New-TestStateDir "register-throw"
-  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "throw-after-0", "-Command", "cmd /c exit 0; throw 'boom'")
+  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "throw-after-0", "-Command", ((Get-ExitCmd 0) + "; throw 'boom'"))
   $id = Get-RegisteredId $r.Output
   Assert-True "register throw wrapper launched" ($r.ExitCode -eq 0 -and $id) "exit=$($r.ExitCode) out=$($r.Output)"
   if ($id) {
@@ -391,7 +401,7 @@ try {
 
   # ---------- 13. native exit 0 then non-terminating error must NOT become done ----------
   $d = New-TestStateDir "register-cmd-getitem-error"
-  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "cmd-getitem-error", "-Command", "cmd /c exit 0; Get-Item C:\nope")
+  $r = Invoke-Tasktrack @("register", "-StateDir", $d, "-Kind", "bash", "-Name", "cmd-getitem-error", "-Command", ((Get-ExitCmd 0) + "; Get-Item C:\nope"))
   $id = Get-RegisteredId $r.Output
   Assert-True "register cmd+Get-Item error launched" ($r.ExitCode -eq 0 -and $id) "exit=$($r.ExitCode) out=$($r.Output)"
   if ($id) {

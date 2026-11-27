@@ -191,13 +191,26 @@ switch ($Action) {
     [IO.File]::WriteAllText($childPath, $childText, (New-Object System.Text.UTF8Encoding($true)))
     $escapedChild = $childPath.Replace("'", "''")
     # 外层只用短 -EncodedCommand 启动子进程并落退出码 sidecar；watch 以 exit 0 作为完成信号
-    $inner = "`$ec = 1; try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File '$escapedChild' *> '$escapedLog'; " +
-      "if (`$null -ne `$LASTEXITCODE) { `$ec = `$LASTEXITCODE } } catch { `$ec = 1 }; " +
-      "Set-Content -LiteralPath '$escapedExit' -Value `$ec -Encoding ASCII"
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
-    $proc = Start-Process -FilePath "powershell.exe" `
-      -ArgumentList @("-NoProfile", "-EncodedCommand", $encoded) `
-      -WindowStyle Hidden -PassThru
+    $onWindows = ($env:OS -eq 'Windows_NT')
+    if ($onWindows) {
+      # --- Windows：原逻辑逐字节保留 ---
+      $inner = "`$ec = 1; try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File '$escapedChild' *> '$escapedLog'; " +
+        "if (`$null -ne `$LASTEXITCODE) { `$ec = `$LASTEXITCODE } } catch { `$ec = 1 }; " +
+        "Set-Content -LiteralPath '$escapedExit' -Value `$ec -Encoding ASCII"
+      $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+      $proc = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-EncodedCommand", $encoded) `
+        -WindowStyle Hidden -PassThru
+    } else {
+      # --- Linux / macOS：用 pwsh，去掉 -ExecutionPolicy / -WindowStyle（类 Unix 不支持）---
+      $inner = "`$ec = 1; try { & pwsh -NoProfile -File '$escapedChild' *> '$escapedLog'; " +
+        "if (`$null -ne `$LASTEXITCODE) { `$ec = `$LASTEXITCODE } } catch { `$ec = 1 }; " +
+        "Set-Content -LiteralPath '$escapedExit' -Value `$ec -Encoding ASCII"
+      $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+      $proc = Start-Process -FilePath "pwsh" `
+        -ArgumentList @("-NoProfile", "-EncodedCommand", $encoded) `
+        -PassThru
+    }
     $job = [pscustomobject]@{
       id = $id; kind = $Kind; name = $Name; command = $Command; logFile = $LogFile; exitFile = $ExitFile
       issue = $Issue; task = $Task; host = $HostName
