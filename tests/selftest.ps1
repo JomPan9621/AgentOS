@@ -1065,12 +1065,12 @@ try {
 } catch { }
 $results.Add([pscustomobject]@{ Case = 'audit cross-layer flags open task without lease'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $noLeaseCheck; Detail = '' })
 # --- public release surface: version / doctor / install dry-run / layout ---
-$versionOut = Test-Case 'version is 0.3.0' { & $aos version }
+$versionOut = Test-Case 'version is 1.0.0-rc1' { & $aos version }
 $versionCheck = 'FAIL'
 try {
-    if ((($versionOut | Out-String).Trim() -eq 'agentos 0.3.0')) { $versionCheck = 'PASS' }
+    if ((($versionOut | Out-String).Trim() -eq 'agentos 1.0.0-rc1')) { $versionCheck = 'PASS' }
 } catch { }
-$results.Add([pscustomobject]@{ Case = 'version reports 0.3.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $versionCheck; Detail = '' })
+$results.Add([pscustomobject]@{ Case = 'version reports 1.0.0-rc1'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $versionCheck; Detail = '' })
 
 $doctorCheck = 'FAIL'
 try {
@@ -1078,9 +1078,9 @@ try {
     $docJson = $docOut | ConvertFrom-Json
     $internalWord = 'driver' + 'core'
     $badChecks = @($docJson.checks | Where-Object { (($_.Group + '/' + $_.Item) -match $internalWord) -or ($_.Item -match 'harness adapters') })
-    if ($docJson.agentos -eq '0.3.0' -and @($docJson.checks).Count -eq 9 -and $badChecks.Count -eq 0) { $doctorCheck = 'PASS' }
+    if ($docJson.agentos -eq '1.0.0-rc1' -and @($docJson.checks).Count -eq 9 -and $badChecks.Count -eq 0) { $doctorCheck = 'PASS' }
 } catch { }
-$results.Add([pscustomobject]@{ Case = 'doctor checks public layout only and reports 0.3.0'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $doctorCheck; Detail = '' })
+$results.Add([pscustomobject]@{ Case = 'doctor checks public layout only and reports 1.0.0-rc1'; Exit = 0; Want = 0; Json = 'ok'; Ms = 0; Status = $doctorCheck; Detail = '' })
 
 $layoutBad = @('.agentos', 'data', 'devops', 'drivercore\skills')
 $layoutPresent = @($layoutBad | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })

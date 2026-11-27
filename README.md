@@ -27,9 +27,9 @@ AgentOS 交付的是**方法**，不是环境。
 
 所以它可以被放在任何机器、任何路径、服务任何项目——**agent 按自己的环境自动适配**。
 
-## drivercore（v0.3.0，architecture-only）
+## drivercore（v1.0.0-rc1，architecture-only）
 
-v0.3.0 起公开仓包含 drivercore 驱动职责层：`bootstrap/`（bootstrap 入口）、`harness/`（三 harness 适配模板与 manifest）、`session/`（会话在场模型）、`tasktrack/`（长任务看门狗）、`worktree/`（兼容转发器）。
+v1.0.0-rc1 起公开仓包含 drivercore 驱动职责层：`bootstrap/`（bootstrap 入口）、`harness/`（三 harness 适配模板与 manifest）、`session/`（会话在场模型）、`tasktrack/`（长任务看门狗）、`worktree/`（兼容转发器）。
 
 公开的是**架构与实现**，不是运行现场：
 
@@ -155,7 +155,7 @@ aos hygiene                          # 只读检查；-Reap 需确认
 
 ## 版本
 
-当前 **v0.3.0**。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前 **v1.0.0-rc1**（预发布）。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 文档索引
 
@@ -199,11 +199,26 @@ tests/       selftest + artifact 测试
 .\drivercore\tasktrack\tests\tasktrack.tests.ps1   # tasktrack 完成判定（55 条）
 ```
 
-当前状态：`tests/selftest.ps1` **209/209 PASS**，`tests/artifact.tests.ps1` **24/24 PASS**，`drivercore/tasktrack/tests/tasktrack.tests.ps1` **55/55 PASS**（2026-11-12）。改动脚本后必须重跑。
+当前状态（v1.0.0-rc1，2026-11-27）：同一份代码在两端各跑三套测试，全部通过。
+
+| 套件 | Linux (pwsh 7.5.4) | Windows (PS 5.1) |
+|------|-------------------|------------------|
+| `tests/selftest.ps1` | 209 / 209 | 209 / 209 |
+| `tests/artifact.tests.ps1` | 24 / 24 | 24 / 24 |
+| `drivercore/tasktrack/tests/tasktrack.tests.ps1` | 55 / 55 | 55 / 55 |
+
+改动脚本后必须重跑。
 
 ## 平台
 
-Windows / PowerShell 5.1+。所有路径使用 Windows 原生形式；`.ps1` 必须 UTF-8 with BOM。
+| 平台 | PowerShell | 状态 |
+|------|-----------|------|
+| Windows | 5.1+ / 7.x | 完整支持（生成 `aos.cmd`，写入用户级 PATH） |
+| Linux / WSL2 | 7.x | 支持（生成 POSIX shim `~/.agentos/bin/aos`；`hygiene` 用 `ps` 与 `/proc`） |
+| macOS | 7.x | 按 POSIX 路径支持（未实机验证） |
+
+平台判定用 `$env:OS` 或 `[IO.Path]::DirectorySeparatorChar`，Windows 分支逐字节保留。
+`.ps1` 必须存为 UTF-8 with BOM（PS 5.1 对无 BOM 文件按 GBK 解码，中文会乱码并导致语法错误）。
 
 ## 安全
 

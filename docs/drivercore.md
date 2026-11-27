@@ -1,6 +1,6 @@
 # drivercore — 驱动职责层架构
 
-> v0.3.0 起，公开仓包含 drivercore 的**架构与实现**。本页说明它的边界、组成与运行假设。
+> v1.0.0-rc1 起，公开仓包含 drivercore 的**架构与实现**。本页说明它的边界、组成与运行假设。
 > 公开版只含方法：**不含任何运行数据、真实主机名、凭据、内部或第三方 skill**。
 
 ## 1. 定位
@@ -105,5 +105,5 @@ drivercore/
 .\tests\selftest.ps1                                # 公开 layout + drivercore 布局/dry-run
 .\tests\artifact.tests.ps1                          # 生成物固定根与路径安全
 .\drivercore\tasktrack\tests\tasktrack.tests.ps1    # tasktrack 完成判定（55 条）
-.\bin\aos.ps1 version                               # agentos 0.3.0
+.\bin\aos.ps1 version                               # agentos 1.0.0-rc1
 ```
